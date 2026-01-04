@@ -1,7 +1,7 @@
 # FastQuit
 
 <div align="center">
-  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="FastQuit Icon" width="120" style="border-radius: 20px;"/>
+  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" alt="FastQuit Icon" width="120" style="border-radius: 20px;"/>
   <br><br>
 
   **The modern, open-source habit breaker for Android.**
@@ -32,9 +32,7 @@
 
 ## 📱 Screenshots
 
-| Home Screen | Settings | About |
-|:---:|:---:|:---:|
-| <br> *Track Habits* | <br> *Preferences* | <br> *Credits* |
+WIP
 
 ## 📥 Download & Installation
 
