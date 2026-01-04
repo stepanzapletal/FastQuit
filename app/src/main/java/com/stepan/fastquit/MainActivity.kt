@@ -107,13 +107,15 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
+// Helper enum for managing high-level app states
+private enum class AppLaunchState { LOADING, UPDATE, MAIN }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         createNotificationChannel()
         setContent {
-            // 1. Init Settings ViewModel early to read Theme
+            // 1. Init Settings ViewModel
             val settingsViewModel: SettingsViewModel = viewModel(
                 factory = object : ViewModelProvider.Factory {
                     override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -122,76 +124,110 @@ class MainActivity : ComponentActivity() {
             )
             val prefs by settingsViewModel.preferences.collectAsState()
 
-            // 2. Check if database needs update
+            // 2. Database Update Logic
             var needsDatabaseUpdate by remember { mutableStateOf<Boolean?>(null) }
             var showUpdateScreen by remember { mutableStateOf(false) }
 
-            LaunchedEffect(Unit) {
-                // Check both databases
+            // Reactive Launch Effect to trigger the update screen from Settings or Logic
+            LaunchedEffect(prefs.forceUpdateScreen) {
                 val needsHabitUpdate = AppDatabase.needsUpdate(applicationContext)
                 val needsSettingsUpdate = SettingsDatabase.needsUpdate(applicationContext)
-                needsDatabaseUpdate = needsHabitUpdate || needsSettingsUpdate
+                val shouldUpdate = needsHabitUpdate || needsSettingsUpdate || prefs.forceUpdateScreen
 
-                if (needsDatabaseUpdate == true) {
+                needsDatabaseUpdate = shouldUpdate
+                if (shouldUpdate) {
                     showUpdateScreen = true
                 }
             }
 
-            // 3. Calculate Theme
+            // 3. Determine current App State
+            val appState = when {
+                showUpdateScreen -> AppLaunchState.UPDATE
+                needsDatabaseUpdate == false -> AppLaunchState.MAIN
+                else -> AppLaunchState.LOADING
+            }
+
+            // 4. Calculate Theme
             val darkTheme = when (prefs.theme) {
                 "Light" -> false
                 "Dark" -> true
                 else -> isSystemInDarkTheme()
             }
 
-            // 4. Pass to Theme
+            // 5. Content with Transitions
             FastQuitTheme(darkTheme = darkTheme) {
-                if (showUpdateScreen) {
-                    DatabaseUpdateScreen(
-                        onUpdateComplete = {
-                            showUpdateScreen = false
-                            needsDatabaseUpdate = false
+                AnimatedContent(
+                    targetState = appState,
+                    transitionSpec = {
+                        if (initialState == AppLaunchState.UPDATE && targetState == AppLaunchState.MAIN) {
+                            // SMOOTH SLIDE DOWN: Update Screen slides down off screen, revealing Main App behind it
+                            (fadeIn(animationSpec = tween(800)) togetherWith
+                                    slideOutVertically(
+                                        animationSpec = tween(800, easing = FastOutSlowInEasing),
+                                        targetOffsetY = { fullHeight -> fullHeight } // Slide down to bottom
+                                    ))
+                                .apply {
+                                    // CRITICAL: Keep Main App (target) BEHIND Update Screen (initial)
+                                    targetContentZIndex = -1f
+                                }
+                        } else {
+                            // Standard Crossfade for Loading -> Main or Loading -> Update
+                            fadeIn(tween(400)) togetherWith fadeOut(tween(400))
                         }
-                    )
-                } else if (needsDatabaseUpdate == false) {
-                    // Show normal app only when update is not needed or completed
-                    val navController = rememberNavController()
+                    },
+                    label = "AppLaunchTransition",
+                    modifier = Modifier.fillMaxSize()
+                ) { state ->
+                    when (state) {
+                        AppLaunchState.UPDATE -> {
+                            DatabaseUpdateScreen(
+                                onUpdateComplete = {
+                                    showUpdateScreen = false
+                                    needsDatabaseUpdate = false
+                                }
+                            )
+                        }
+                        AppLaunchState.MAIN -> {
+                            // MAIN APP CONTENT
+                            val navController = rememberNavController()
+                            val context = LocalContext.current
 
-                    val context = LocalContext.current
-                    var hasNotificationPermission by remember {
-                        mutableStateOf(
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-                            } else true
-                        )
-                    }
-                    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasNotificationPermission = it }
-                    LaunchedEffect(Unit) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
-                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    }
+                            var hasNotificationPermission by remember {
+                                mutableStateOf(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                                    } else true
+                                )
+                            }
+                            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasNotificationPermission = it }
+                            LaunchedEffect(Unit) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            }
 
-                    NavHost(navController = navController, startDestination = "home") {
-                        composable("home") { FastQuitHomeScreen(navController) }
-                        composable("settings") { SettingsScreen(navController, settingsViewModel) }
-                        composable("detail/{habitId}/{habitName}", arguments = listOf(navArgument("habitId") { type = NavType.IntType })) { backStackEntry ->
-                            val id = backStackEntry.arguments?.getInt("habitId") ?: 0
-                            val name = backStackEntry.arguments?.getString("habitName") ?: ""
-                            val app = LocalContext.current.applicationContext as Application
-                            val detailViewModel: DetailViewModel = viewModel(factory = DetailViewModelFactory(app, id))
-                            HabitDetailScreen(navController, name, detailViewModel)
+                            NavHost(navController = navController, startDestination = "home") {
+                                composable("home") { FastQuitHomeScreen(navController) }
+                                composable("settings") { SettingsScreen(navController, settingsViewModel) }
+                                composable("detail/{habitId}/{habitName}", arguments = listOf(navArgument("habitId") { type = NavType.IntType })) { backStackEntry ->
+                                    val id = backStackEntry.arguments?.getInt("habitId") ?: 0
+                                    val name = backStackEntry.arguments?.getString("habitName") ?: ""
+                                    val app = LocalContext.current.applicationContext as Application
+                                    val detailViewModel: DetailViewModel = viewModel(factory = DetailViewModelFactory(app, id))
+                                    HabitDetailScreen(navController, name, detailViewModel)
+                                }
+                            }
                         }
-                    }
-                } else {
-                    // Show loading while checking
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        AppLaunchState.LOADING -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                     }
                 }
             }
@@ -206,7 +242,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
 // CONSTANT FOR NICE GREEN
 val SuccessGreen = Color(0xFF00D158)
 
@@ -229,11 +264,9 @@ enum class SettingsPage { Main, Basic, Backup, Dev, About, Licenses, Haptics }
 @Composable
 fun SettingsScreen(navController: NavController, settingsViewModel: SettingsViewModel = viewModel()) {
     var currentPage by remember { mutableStateOf(SettingsPage.Main) }
-    // Track the previous page to determine direction
-    var previousPage by remember { mutableStateOf<SettingsPage?>(null) }
 
+    // Handle Android Back Button
     BackHandler(enabled = currentPage != SettingsPage.Main) {
-        previousPage = currentPage
         currentPage = SettingsPage.Main
     }
 
@@ -260,7 +293,6 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        previousPage = currentPage
                         if (currentPage == SettingsPage.Main) navController.popBackStack() else currentPage = SettingsPage.Main
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -275,55 +307,32 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
             AnimatedContent(
                 targetState = currentPage,
                 transitionSpec = {
-                    // Determine if we're navigating forward or backward
+                    // Shared specs for consistency
+                    val duration = 400
+                    val easing = FastOutSlowInEasing // Smooth curve
+
+                    // Determine direction
                     val isForward = when {
-                        // If going from Main to any other page, it's forward
                         initialState == SettingsPage.Main && targetState != SettingsPage.Main -> true
-                        // If going back to Main from any page, it's backward
                         targetState == SettingsPage.Main && initialState != SettingsPage.Main -> false
-                        // Otherwise, compare enum ordinals
                         else -> targetState.ordinal > initialState.ordinal
                     }
 
                     if (isForward) {
-                        // Forward navigation: slide in from right, slide out to left
-                        slideInHorizontally(
-                            initialOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(durationMillis = 300)
-                        ) + fadeIn(
-                            animationSpec = tween(durationMillis = 300)
-                        ) togetherWith slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> -fullWidth },
-                            animationSpec = tween(durationMillis = 300)
-                        ) + fadeOut(
-                            animationSpec = tween(durationMillis = 300)
-                        )
+                        // Forward: Enter from Right, Exit to Left (with parallax)
+                        slideInHorizontally(tween(duration, easing = easing)) { it } + fadeIn(tween(duration)) togetherWith
+                                slideOutHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeOut(tween(duration))
                     } else {
-                        // Backward navigation: slide in from left, slide out to right
-                        slideInHorizontally(
-                            initialOffsetX = { fullWidth -> -fullWidth },
-                            animationSpec = tween(durationMillis = 300)
-                        ) + fadeIn(
-                            animationSpec = tween(durationMillis = 300)
-                        ) togetherWith slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> fullWidth },
-                            animationSpec = tween(durationMillis = 300)
-                        ) + fadeOut(
-                            animationSpec = tween(durationMillis = 300)
-                        )
+                        // Backward: Enter from Left (with parallax), Exit to Right
+                        slideInHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeIn(tween(duration)) togetherWith
+                                slideOutHorizontally(tween(duration, easing = easing)) { it } + fadeOut(tween(duration))
                     }
                 },
                 label = "SettingsNav"
             ) { page ->
                 when (page) {
-                    SettingsPage.Main -> SettingsMainList(onNavigate = {
-                        previousPage = currentPage
-                        currentPage = it
-                    })
-                    SettingsPage.Basic -> BasicSettings(settingsViewModel, onNavigate = {
-                        previousPage = currentPage
-                        currentPage = it
-                    })
+                    SettingsPage.Main -> SettingsMainList(onNavigate = { currentPage = it })
+                    SettingsPage.Basic -> BasicSettings(settingsViewModel, onNavigate = { currentPage = it })
                     SettingsPage.Haptics -> HapticsSettings(settingsViewModel)
                     SettingsPage.Backup -> BackupSettings()
                     SettingsPage.Dev -> DevSettings(settingsViewModel)
@@ -741,15 +750,16 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showNukeSheet by remember { mutableStateOf(false) }
 
-    // Version states restoration
+    // Version states
     var habitDbStoredVersion by remember { mutableIntStateOf(0) }
     var settingsDbStoredVersion by remember { mutableIntStateOf(0) }
     var isLoadingVersions by remember { mutableStateOf(true) }
 
-    // State for database update testing
+    // Update testing state
     var needsDatabaseUpdate by remember { mutableStateOf<Boolean?>(null) }
     var showUpdateScreen by remember { mutableStateOf(false) }
 
+    // Global Timer
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
@@ -757,20 +767,17 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
         }
     }
 
-    // Load versions logic restored
+    // Version Loader
     LaunchedEffect(Unit) {
         isLoadingVersions = true
         withContext(Dispatchers.IO) {
             try {
-                val habitDb = AppDatabase.getDatabase(context)
-                habitDbStoredVersion = habitDb.habitDao().getDbVersion()?.versionCode ?: 0
+                habitDbStoredVersion = AppDatabase.getDatabase(context).habitDao().getDbVersion()?.versionCode ?: 0
+                settingsDbStoredVersion = SettingsDatabase.getDatabase(context).settingsDao().getSettingsVersion()?.versionCode ?: 0
 
-                val settingsDb = SettingsDatabase.getDatabase(context)
-                settingsDbStoredVersion = settingsDb.settingsDao().getSettingsVersion()?.versionCode ?: 0
-
-                val needsHabitUpdate = AppDatabase.needsUpdate(context)
-                val needsSettingsUpdate = SettingsDatabase.needsUpdate(context)
-                needsDatabaseUpdate = needsHabitUpdate || needsSettingsUpdate
+                val needsHabit = AppDatabase.needsUpdate(context)
+                val needsSettings = SettingsDatabase.needsUpdate(context)
+                needsDatabaseUpdate = needsHabit || needsSettings
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -795,12 +802,13 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                 }
                 Spacer(modifier = Modifier.height(24.dp))
                 Text("Danger Zone", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black))
-                Text("Deleting a database is permanent. App will kill process.", textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+                Text("Deleting a database is permanent. The app will close immediately.", textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Button(
                     onClick = {
-                        HapticHelper.warning(view, prefs) // Fixed Signature
+                        HapticHelper.warning(view, prefs)
                         context.deleteDatabase("fastquit_db")
                         android.os.Process.killProcess(android.os.Process.myPid())
                     },
@@ -812,10 +820,12 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("NUKE HABITS & HISTORY", fontWeight = FontWeight.Bold)
                 }
+
                 Spacer(modifier = Modifier.height(12.dp))
+
                 Button(
                     onClick = {
-                        HapticHelper.warning(view, prefs) // Fixed Signature
+                        HapticHelper.warning(view, prefs)
                         context.deleteDatabase("settings_db")
                         android.os.Process.killProcess(android.os.Process.myPid())
                     },
@@ -831,18 +841,10 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
         }
     }
 
-    if (showUpdateScreen) {
-        DatabaseUpdateScreen(
-            onUpdateComplete = {
-                showUpdateScreen = false
-            }
-        )
-        return
-    }
-
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         ExpressiveSection("Build Info") {
             ExpressiveItem("App Version", "1.0.0 (Alpha)", Icons.Rounded.Android) {}
+
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
             ExpressiveItem(
@@ -862,13 +864,28 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
             ExpressiveItem(
-                title = "Database Update Testing",
-                subtitle = if (needsDatabaseUpdate == true) "Update required! Click to test"
-                else if (needsDatabaseUpdate == false) "No update needed. Click to force test"
-                else "Checking update status...",
+                title = "Database Migration",
+                subtitle = when(needsDatabaseUpdate) {
+                    true -> "Update required."
+                    false -> "Database is up to date."
+                    else -> "Checking status..."
+                },
                 icon = Icons.Rounded.SystemUpdate,
-                onClick = { showUpdateScreen = true }
+                onClick = { if (needsDatabaseUpdate == true) showUpdateScreen = true }
             )
+
+            ExpressiveSection(title = "System Debug") {
+                ExpressiveToggleItem(
+                    title = "Force Update Screen",
+                    subtitle = "Test the migration UI on next launch",
+                    icon = Icons.Rounded.SystemUpdate,
+                    checked = prefs.forceUpdateScreen,
+                    onCheckedChange = { newValue ->
+                        // Update the preference in the DataStore/Database
+                        settingsViewModel.update { it.copy(forceUpdateScreen = newValue) }
+                    }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -892,10 +909,10 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        ExpressiveSection("Notification testing") {
+        ExpressiveSection("Lab Tools") {
             val scope = rememberCoroutineScope()
-            Button(modifier = Modifier.padding(16.dp).fillMaxWidth(), onClick = { scope.launch { sendNotification(context, "Test", "Notification Test") } }) {
-                Text("Send Test Notification")
+            ExpressiveItem("Test Notification", "Sends a dummy alert", Icons.Rounded.Notifications) {
+                scope.launch { sendNotification(context, "Test", "Notification Test") }
             }
         }
 
@@ -1164,7 +1181,6 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
     }
 }
 
-// ... (Rest of HabitCard and NewHabitSheet remain unchanged from previous correct versions) ...
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun HabitCard(
@@ -1232,7 +1248,20 @@ fun HabitCard(
                     }
                     Box(contentAlignment = Alignment.Center) {
                         val waveColor = if(isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
-                        CircularWavyProgressIndicator(progress = { animatedProgress }, modifier = Modifier.size(100.dp), color = waveColor, trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f), amplitude = { 1f }, stroke = Stroke(width = with(density) { 8.dp.toPx() }, cap = StrokeCap.Round), trackStroke = Stroke(width = with(density) { 8.dp.toPx() }))
+                        CircularWavyProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.size(100.dp),
+                            color = waveColor,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
+                            amplitude = { 1f },
+                            stroke = Stroke(
+                                width = with(density) { 8.dp.toPx() },
+                                cap = StrokeCap.Round
+                            ),
+                            trackStroke = Stroke(
+                                width = with(density) { 8.dp.toPx() },
+                                cap = StrokeCap.Round)
+                        )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             if (isComplete) {
                                 Icon(Icons.Rounded.Check, null, tint = waveColor, modifier = Modifier.size(32.dp))

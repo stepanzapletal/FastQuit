@@ -682,7 +682,11 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     val safeGoal = if (targetSeconds == 0L) 1L else targetSeconds
     val rawProgress = (diffSeconds.toFloat() / safeGoal.toFloat()).coerceIn(0f, 1f)
     val isComplete = rawProgress >= 1f
-    val animatedProgress by animateFloatAsState(targetValue = rawProgress, animationSpec = tween(1000, easing = LinearEasing), label = "Progress")
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = tween(1000, easing = LinearEasing),
+        label = "Progress"
+    )
 
     // Reset Dialog State
     var showResetDialog by remember { mutableStateOf(false) }
@@ -713,14 +717,12 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     var pendingAction by remember { mutableStateOf("") } // "EXTEND" or "EDIT"
     var showResetConfirmation by remember { mutableStateOf(false) }
 
-    // Replace the old AlertDialog (lines ~116-140 in your code) with this:
     if (showResetConfirmation) {
         GoalResetChoiceSheet(
             habitName = habitEntity?.name ?: "Habit",
             currentStreak = formatDurationFriendly(diffSeconds),
             onDismiss = { showResetConfirmation = false },
             onResetTimer = {
-                // Reset timer to now
                 if (pendingAction == "EXTEND") {
                     viewModel.extendGoal(pendingAmount, pendingUnit, resetTimer = true)
                 } else {
@@ -728,7 +730,6 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
                 }
             },
             onKeepCurrentTime = {
-                // Keep existing start time
                 if (pendingAction == "EXTEND") {
                     viewModel.extendGoal(pendingAmount, pendingUnit, resetTimer = false)
                 } else {
@@ -738,7 +739,6 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
         )
     }
 
-    // Extend Sheet (Complete -> New Goal)
     if (showExtendSheet) {
         ModalBottomSheet(
             onDismissRequest = { showExtendSheet = false },
@@ -756,13 +756,12 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
                     pendingUnit = unit
                     pendingAction = "EXTEND"
                     showExtendSheet = false
-                    showResetConfirmation = true // Trigger Check
+                    showResetConfirmation = true
                 }
             )
         }
     }
 
-    // Edit Sheet (Change Plan)
     if (showEditTargetSheet) {
         ModalBottomSheet(
             onDismissRequest = { showEditTargetSheet = false },
@@ -780,13 +779,12 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
                     pendingUnit = unit
                     pendingAction = "EDIT"
                     showEditTargetSheet = false
-                    showResetConfirmation = true // Trigger Check
+                    showResetConfirmation = true
                 }
             )
         }
     }
 
-    // Reset Progress Dialog
     if (showResetDialog) {
         ResetBottomSheet(
             habitName = habitEntity?.name ?: "Habit",
@@ -801,22 +799,38 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp) // Tighter spacing for Expressive grouping
     ) {
-        Card(modifier = Modifier.fillMaxWidth().height(360.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), shape = RoundedCornerShape(32.dp)) {
+        // 1. MAIN PROGRESS CARD
+        Card(
+            modifier = Modifier.fillMaxWidth().height(360.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            shape = RoundedCornerShape(32.dp)
+        ) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val density = LocalDensity.current
                 val waveColor = if (isComplete) SuccessGreen else MaterialTheme.colorScheme.primary
 
-                CircularWavyProgressIndicator(progress = { animatedProgress }, modifier = Modifier.size(300.dp), color = waveColor, trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), amplitude = { 1.0f }, wavelength = 120.dp, stroke = Stroke(width = with(density) { 20.dp.toPx() }, cap = StrokeCap.Round), trackStroke = Stroke(width = with(density) { 20.dp.toPx() }))
+                CircularWavyProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier.size(300.dp),
+                    color = waveColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    amplitude = { 1.0f },
+                    wavelength = 120.dp,
+                    stroke = Stroke(width = with(density) { 20.dp.toPx() }, cap = StrokeCap.Round),
+                    trackStroke = Stroke(width = with(density) { 20.dp.toPx() })
+                )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("STREAK", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("$displayCount", style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Black, fontSize = 80.sp), color = MaterialTheme.colorScheme.onSurface)
                     Text(displayUnit, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = waveColor)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // CLICKABLE GOAL
                     Surface(
                         onClick = { showEditTargetSheet = true },
                         color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -833,7 +847,15 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = RoundedCornerShape(24.dp)) {
+        // 2. NEW: MOTIVATIONAL CAROUSEL (Snappy 2s cycle)
+        MotivationalCarousel(progress = rawProgress)
+
+        // 3. CLOCK CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            shape = RoundedCornerShape(24.dp)
+        ) {
             Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 val hours = (diffSeconds % 86400) / 3600; val minutes = (diffSeconds % 3600) / 60; val seconds = diffSeconds % 60
                 TimeTickerUnit(value = hours, label = "HOURS"); Text(":", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.outline))
@@ -842,6 +864,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             }
         }
 
+        // 4. CONSISTENCY / CALENDAR
         Column {
             Text("Consistency", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
             CalendarCard(habitStartDate = start, targetSeconds = targetSeconds)
@@ -849,6 +872,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
 
         Spacer(modifier = Modifier.height(60.dp))
 
+        // 5. ACTION BUTTONS
         if (isComplete) {
             Button(
                 onClick = { showExtendSheet = true },
@@ -867,13 +891,8 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = { showResetDialog = true },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Rounded.RestartAlt, null)
@@ -883,13 +902,8 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
         } else {
             Button(
                 onClick = { showResetDialog = true },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                modifier = Modifier.fillMaxWidth().height(72.dp),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Icon(Icons.Rounded.Warning, null)
@@ -899,6 +913,48 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+fun MotivationalCarousel(progress: Float) {
+    val phrases = remember(progress) {
+        when {
+            progress >= 1f -> listOf("Goal Achieved!", "Absolute Legend", "Milestone Reached", "New Peak Unlocked")
+            progress >= 0.8f -> listOf("Almost there!", "The final stretch", "Don't stop now", "Finish strong!")
+            progress >= 0.5f -> listOf("Halfway point!", "Urge defeated", "Momentum building", "Keep it up")
+            else -> listOf("Keep going!", "One day at a time", "Building habit", "Stay focused")
+        }
+    }
+
+    var index by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(phrases) {
+        while (true) {
+            delay(2000)
+            index = (index + 1) % phrases.size
+        }
+    }
+
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AnimatedContent(
+            targetState = phrases[index],
+            transitionSpec = {
+                (slideInVertically(animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy)) { it } + fadeIn())
+                    .togetherWith(slideOutVertically { -it } + fadeOut())
+            },
+            label = "MotivationalText"
+        ) { text ->
+            Text(
+                text = text.uppercase(),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black, letterSpacing = 4.sp),
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 

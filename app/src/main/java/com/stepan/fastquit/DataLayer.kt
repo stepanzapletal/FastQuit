@@ -5,13 +5,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.room.*
-import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 // GLOBAL CONSTANTS
-const val HABIT_DB_VERSION = 7  // Increased from 6
-const val SETTINGS_DB_VERSION = 2  // Increased from 1
+const val HABIT_DB_VERSION = 8
+const val SETTINGS_DB_VERSION = 4
 
 // ================== MAIN DATABASE (HABITS) ==================
 
@@ -26,7 +25,9 @@ data class HabitEntity(
     val goalLabel: String,
     val sortIndex: Int,
     val completions: Int = 0,
-    val targetChangesCount: Int = 0
+    val targetChangesCount: Int = 0,
+    @ColumnInfo(defaultValue = "1")
+    var habitTest: Int = 1
 )
 
 @Entity(
@@ -72,7 +73,7 @@ data class GoalChangeHistoryEntity(
 @Entity(tableName = "db_version_info")
 data class DbVersionInfo(
     @PrimaryKey val id: Int = 0,
-    val versionCode: Int,  // The stored schema version
+    val versionCode: Int,
     val lastUpdated: Long = System.currentTimeMillis()
 )
 
@@ -82,12 +83,12 @@ interface HabitDao {
     fun getAllHabits(): Flow<List<HabitEntity>>
 
     @Query("SELECT * FROM habits WHERE id = :id")
-    fun getHabitFlow(id: Int): Flow<HabitEntity>
+    fun getHabitFlow(id: Int): Flow<HabitEntity?>
 
     @Query("SELECT * FROM habits WHERE id = :id")
     suspend fun getHabitById(id: Int): HabitEntity?
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(habit: HabitEntity)
 
     @Update
@@ -99,21 +100,18 @@ interface HabitDao {
     @Update
     suspend fun updateHabits(habits: List<HabitEntity>)
 
-    // Reset History
     @Insert
     suspend fun insertHistory(history: ResetHistoryEntity)
 
     @Query("SELECT * FROM reset_history WHERE habitId = :habitId ORDER BY endDate DESC")
     fun getHistoryForHabit(habitId: Int): Flow<List<ResetHistoryEntity>>
 
-    // Goal Change History
     @Insert
     suspend fun insertGoalChange(goalChange: GoalChangeHistoryEntity)
 
     @Query("SELECT * FROM goal_change_history WHERE habitId = :habitId ORDER BY changeDate DESC")
     fun getGoalChangesForHabit(habitId: Int): Flow<List<GoalChangeHistoryEntity>>
 
-    // Version Info
     @Query("SELECT * FROM db_version_info WHERE id = 0")
     suspend fun getDbVersion(): DbVersionInfo?
 
@@ -128,7 +126,11 @@ interface HabitDao {
         GoalChangeHistoryEntity::class,
         DbVersionInfo::class
     ],
-    version = HABIT_DB_VERSION
+    version = HABIT_DB_VERSION,
+    autoMigrations = [
+        AutoMigration(from = 7, to = 8)
+    ],
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
@@ -136,125 +138,23 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
 
-        // Migration from version 6 to 7
-        private val MIGRATION_6_7 = object : Migration(6, 7) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                // Create the new tables
-                database.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS goal_change_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        habitId INTEGER NOT NULL,
-                        changeDate INTEGER NOT NULL,
-                        oldTargetSeconds INTEGER NOT NULL,
-                        newTargetSeconds INTEGER NOT NULL,
-                        oldGoalLabel TEXT NOT NULL,
-                        newGoalLabel TEXT NOT NULL,
-                        changeType TEXT NOT NULL,
-                        resetTimer INTEGER NOT NULL,
-                        FOREIGN KEY(habitId) REFERENCES habits(id) ON DELETE CASCADE
-                    )
-                    """.trimIndent()
-                )
-
-                database.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS db_version_info (
-                        id INTEGER PRIMARY KEY NOT NULL,
-                        versionCode INTEGER NOT NULL,
-                        lastUpdated INTEGER NOT NULL
-                    )
-                    """.trimIndent()
-                )
-
-                // Create index
-                database.execSQL("CREATE INDEX IF NOT EXISTS index_goal_change_history_habitId ON goal_change_history(habitId)")
-
-                // Check if row exists before inserting
-                val cursor = database.query("SELECT COUNT(*) FROM db_version_info WHERE id = 0")
-                val rowExists = try {
-                    cursor.moveToFirst() && cursor.getInt(0) > 0
-                } finally {
-                    cursor.close()
-                }
-
-                if (!rowExists) {
-                    // Insert initial version only if it doesn't exist
-                    database.execSQL(
-                        """
-                        INSERT INTO db_version_info (id, versionCode, lastUpdated) 
-                        VALUES (0, 7, ${System.currentTimeMillis()})
-                        """.trimIndent()
-                    )
-                } else {
-                    // Update existing row
-                    database.execSQL(
-                        """
-                        UPDATE db_version_info 
-                        SET versionCode = 7, lastUpdated = ${System.currentTimeMillis()}
-                        WHERE id = 0
-                        """.trimIndent()
-                    )
-                }
-            }
-        }
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                Room.databaseBuilder(context, AppDatabase::class.java, "fastquit_db")
-                    .addMigrations(MIGRATION_6_7)
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "fastquit_db"
+                )
                     .fallbackToDestructiveMigration()
-                    .addCallback(object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // Create version table first
-                            db.execSQL(
-                                """
-                            CREATE TABLE IF NOT EXISTS db_version_info (
-                                id INTEGER PRIMARY KEY NOT NULL,
-                                versionCode INTEGER NOT NULL,
-                                lastUpdated INTEGER NOT NULL
-                            )
-                            """.trimIndent()
-                            )
-                            // Then insert initial version
-                            db.execSQL(
-                                "INSERT INTO db_version_info (id, versionCode, lastUpdated) " +
-                                        "VALUES (0, $HABIT_DB_VERSION, ${System.currentTimeMillis()})"
-                            )
-                        }
-
-                        override fun onOpen(db: SupportSQLiteDatabase) {
-                            super.onOpen(db)
-                            // Just verify the table exists and has data
-                            db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='db_version_info'").use { cursor ->
-                                if (cursor.moveToFirst()) {
-                                    // Table exists, verify it has a row
-                                    db.query("SELECT COUNT(*) FROM db_version_info WHERE id = 0").use { countCursor ->
-                                        if (countCursor.moveToFirst() && countCursor.getInt(0) == 0) {
-                                            // Table exists but no row, insert one
-                                            db.execSQL(
-                                                "INSERT OR REPLACE INTO db_version_info (id, versionCode, lastUpdated) " +
-                                                        "VALUES (0, $HABIT_DB_VERSION, ${System.currentTimeMillis()})"
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    })
-                    .build().also { INSTANCE = it }
+                    .build()
+                INSTANCE = instance
+                instance
             }
         }
 
-        // Helper to get current stored version
-        suspend fun getCurrentVersion(context: Context): Int {
-            return getDatabase(context).habitDao().getDbVersion()?.versionCode ?: 0
-        }
-
-        // Check if database needs update
         suspend fun needsUpdate(context: Context): Boolean {
-            val storedVersion = getCurrentVersion(context)
+            val db = getDatabase(context)
+            val storedVersion = db.habitDao().getDbVersion()?.versionCode ?: 0
             return storedVersion < HABIT_DB_VERSION
         }
     }
@@ -277,12 +177,12 @@ data class UserPreferences(
     val notificationsEnabled: Boolean = true,
     val autoUpdateEnabled: Boolean = true,
     val updateFrequency: String = "1 Hour",
-    // HAPTICS SECTION
     val hapticsGlobal: Boolean = true,
-    val hapticsEvents: Boolean = true,  // Achievements/Goal Reached
-    val hapticsTimer: Boolean = true,   // Every second "Tick"
-    val hapticsUI: Boolean = true,      // Buttons/Switches
-    val hapticsWarnings: Boolean = true // Resets/Nukes
+    val hapticsEvents: Boolean = true,
+    val hapticsTimer: Boolean = true,
+    val hapticsUI: Boolean = true,
+    val hapticsWarnings: Boolean = true,
+    val forceUpdateScreen: Boolean = false
 )
 
 @Dao
@@ -293,7 +193,6 @@ interface SettingsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setPreferences(prefs: UserPreferences)
 
-    // Version Info for Settings DB
     @Query("SELECT * FROM settings_version_info WHERE id = 0")
     suspend fun getSettingsVersion(): SettingsVersionInfo?
 
@@ -302,11 +201,12 @@ interface SettingsDao {
 }
 
 @Database(
-    entities = [
-        UserPreferences::class,
-        SettingsVersionInfo::class
+    entities = [UserPreferences::class, SettingsVersionInfo::class],
+    version = SETTINGS_DB_VERSION,
+    autoMigrations = [
+        AutoMigration(from = 3, to = 4)
     ],
-    version = SETTINGS_DB_VERSION
+    exportSchema = true
 )
 abstract class SettingsDatabase : RoomDatabase() {
     abstract fun settingsDao(): SettingsDao
@@ -314,104 +214,32 @@ abstract class SettingsDatabase : RoomDatabase() {
     companion object {
         @Volatile private var INSTANCE: SettingsDatabase? = null
 
-        // Migration from version 1 to 2
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                // Create version info table if it doesn't exist
-                database.execSQL(
-                    """
-                    CREATE TABLE IF NOT EXISTS settings_version_info (
-                        id INTEGER PRIMARY KEY NOT NULL,
-                        versionCode INTEGER NOT NULL,
-                        lastUpdated INTEGER NOT NULL
-                    )
-                    """.trimIndent()
-                )
-
-                // Check if row exists before inserting
-                val cursor = database.query("SELECT COUNT(*) FROM settings_version_info WHERE id = 0")
-                val rowExists = try {
-                    cursor.moveToFirst() && cursor.getInt(0) > 0
-                } finally {
-                    cursor.close()
-                }
-
-                if (!rowExists) {
-                    // Insert initial version only if it doesn't exist
-                    database.execSQL(
-                        """
-                        INSERT INTO settings_version_info (id, versionCode, lastUpdated) 
-                        VALUES (0, 2, ${System.currentTimeMillis()})
-                        """.trimIndent()
-                    )
-                } else {
-                    // Update existing row
-                    database.execSQL(
-                        """
-                        UPDATE settings_version_info 
-                        SET versionCode = 2, lastUpdated = ${System.currentTimeMillis()}
-                        WHERE id = 0
-                        """.trimIndent()
-                    )
-                }
-            }
-        }
-
         fun getDatabase(context: Context): SettingsDatabase {
             return INSTANCE ?: synchronized(this) {
-                Room.databaseBuilder(context, SettingsDatabase::class.java, "settings_db")
-                    .addMigrations(MIGRATION_1_2)
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    SettingsDatabase::class.java,
+                    "settings_db"
+                )
                     .addCallback(object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // Create version table first
+                        override fun onOpen(db: SupportSQLiteDatabase) {
+                            super.onOpen(db)
+                            // Ensure version row exists on open
                             db.execSQL(
-                                """
-                            CREATE TABLE IF NOT EXISTS settings_version_info (
-                                id INTEGER PRIMARY KEY NOT NULL,
-                                versionCode INTEGER NOT NULL,
-                                lastUpdated INTEGER NOT NULL
-                            )
-                            """.trimIndent()
-                            )
-                            // Then insert initial version
-                            db.execSQL(
-                                "INSERT INTO settings_version_info (id, versionCode, lastUpdated) " +
+                                "INSERT OR IGNORE INTO settings_version_info (id, versionCode, lastUpdated) " +
                                         "VALUES (0, $SETTINGS_DB_VERSION, ${System.currentTimeMillis()})"
                             )
                         }
-
-                        override fun onOpen(db: SupportSQLiteDatabase) {
-                            super.onOpen(db)
-                            // Just verify the table exists and has data
-                            db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings_version_info'").use { cursor ->
-                                if (cursor.moveToFirst()) {
-                                    // Table exists, verify it has a row
-                                    db.query("SELECT COUNT(*) FROM settings_version_info WHERE id = 0").use { countCursor ->
-                                        if (countCursor.moveToFirst() && countCursor.getInt(0) == 0) {
-                                            // Table exists but no row, insert one
-                                            db.execSQL(
-                                                "INSERT OR REPLACE INTO settings_version_info (id, versionCode, lastUpdated) " +
-                                                        "VALUES (0, $SETTINGS_DB_VERSION, ${System.currentTimeMillis()})"
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     })
-                    .build().also { INSTANCE = it }
+                    .build()
+                INSTANCE = instance
+                instance
             }
         }
 
-        // Helper to get current stored version
-        suspend fun getCurrentVersion(context: Context): Int {
-            return getDatabase(context).settingsDao().getSettingsVersion()?.versionCode ?: 0
-        }
-
-        // Check if database needs update
         suspend fun needsUpdate(context: Context): Boolean {
-            val storedVersion = getCurrentVersion(context)
+            val db = getDatabase(context)
+            val storedVersion = db.settingsDao().getSettingsVersion()?.versionCode ?: 0
             return storedVersion < SETTINGS_DB_VERSION
         }
     }
