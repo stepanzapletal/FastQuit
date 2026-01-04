@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,7 +95,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.google.gson.annotations.SerializedName
 import com.stepan.fastquit.ui.theme.FastQuitTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -113,6 +113,10 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.ui.graphics.Brush
+import com.google.gson.annotations.SerializedName
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
 
 // Helper enum for managing high-level app states
 private enum class AppLaunchState { LOADING, UPDATE, MAIN }
@@ -1193,6 +1197,109 @@ fun ExpressiveItem(title: String, subtitle: String, icon: ImageVector, onClick: 
     }
 }
 
+// ===================== GITHUB UPDATE SYSTEM =====================
+
+// 1. Data Models
+data class GitHubRelease(
+    @SerializedName("tag_name") val tagName: String,
+    @SerializedName("body") val body: String,
+    @SerializedName("html_url") val htmlUrl: String,
+    @SerializedName("assets") val assets: List<GitHubAsset>
+)
+
+data class GitHubAsset(
+    @SerializedName("browser_download_url") val downloadUrl: String
+)
+
+// 2. API Interface
+interface GitHubApi {
+    @GET("repos/stepanzapletal/FastQuit/releases")
+    suspend fun getAllReleases(): List<GitHubRelease>
+}
+
+// 3. Dedicated Network Client for Updates
+object UpdaterNetwork {
+    val api: GitHubApi = Retrofit.Builder()
+        .baseUrl("https://api.github.com/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+        .create(GitHubApi::class.java)
+}
+
+// 4. Logic
+object UpdateManager {
+    private const val TAG = "FastQuitUpdater"
+
+    suspend fun checkForSequentialUpdate(context: Context): GitHubRelease? {
+        Log.d(TAG, "--- STARTING UPDATE CHECK ---")
+
+        // 1. Verify the URL being requested
+        // NOTE: Ensure these match your ACTUAL GitHub Username and Repo Name!
+        // The final URL will be: https://api.github.com/repos/Step7750/FastQuit/releases
+        Log.d(TAG, "Targeting GitHub Repo: Step7750/FastQuit")
+
+        return try {
+            val releases = UpdaterNetwork.api.getAllReleases()
+
+            // If we get here, the Network call succeeded (200 OK)
+            Log.d(TAG, "Network Success. Found ${releases.size} releases.")
+
+            if (releases.isEmpty()) {
+                Log.w(TAG, "No releases found on GitHub. Did you publish one?")
+                return null
+            }
+
+            val currentVersionName = getAppVersion(context).removePrefix("v")
+            Log.d(TAG, "Current App Version: $currentVersionName")
+
+            val currentIndex = releases.indexOfFirst {
+                it.tagName.removePrefix("v") == currentVersionName
+            }
+
+            Log.d(TAG, "Current Version Index: $currentIndex")
+
+            if (currentIndex == -1) {
+                Log.w(TAG, "CRITICAL: Current version ($currentVersionName) not found in release list.")
+                Log.w(TAG, "Available tags: ${releases.map { it.tagName }}")
+                return null
+            }
+
+            if (currentIndex > 0) {
+                val nextRelease = releases[currentIndex - 1]
+                Log.i(TAG, "UPDATE AVAILABLE: ${nextRelease.tagName}")
+                nextRelease
+            } else {
+                Log.i(TAG, "App is up to date.")
+                null
+            }
+
+        } catch (e: retrofit2.HttpException) {
+            // This catches 404, 403, 500 errors
+            Log.e(TAG, "HTTP Error: ${e.code()} ${e.message()}")
+            Log.e(TAG, "If 404: Check your Username/Repo name in GitHubApi interface.")
+            Log.e(TAG, "If 404: Ensure the Repo is PUBLIC (Private repos need tokens).")
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "General Error checking updates", e)
+            null
+        } finally {
+            Log.d(TAG, "--- END UPDATE CHECK ---")
+        }
+    }
+
+    fun openReleasePage(context: Context, url: String) {
+        try {
+            Log.d(TAG, "Opening URL: $url")
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open browser", e)
+            Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
 @Composable
 fun ExpressiveToggleItem(
     title: String,
@@ -1278,7 +1385,19 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
     val pullState = rememberPullToRefreshState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-
+    // --- NEW: Update Checker State ---
+    var updateAvailable by remember { mutableStateOf<GitHubRelease?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val nextRelease = UpdateManager.checkForSequentialUpdate(context)
+            if (nextRelease != null) {
+                updateAvailable = nextRelease
+                showUpdateDialog = true
+            }
+        }
+    }
     // Timer for UI updates
     LaunchedEffect(Unit) {
         while (true) {
@@ -1361,6 +1480,37 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
         ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow, dragHandle = { BottomSheetDefaults.DragHandle() }) {
             NewHabitSheet(onDismiss = { showBottomSheet = false }, onSave = { name, icon, amount, unit, start -> viewModel.addHabit(name, icon, amount, unit, start); showBottomSheet = false })
         }
+    }
+    if (showUpdateDialog && updateAvailable != null) {
+        val release = updateAvailable!!
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            icon = { Icon(Icons.Rounded.SystemUpdate, null) },
+            title = { Text(stringResource(R.string.update_available_title)) }, // Add to strings.xml or use literal "Update Available"
+            text = {
+                Column {
+                    Text("New Version: ${release.tagName}", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (release.body.length > 300) release.body.take(300) + "..." else release.body,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    UpdateManager.openReleasePage(context, release.htmlUrl)
+                    showUpdateDialog = false
+                }) {
+                    Text("Download")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 }
 

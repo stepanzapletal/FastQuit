@@ -296,4 +296,5 @@
     <string name="enter_fastquit">ENTER FASTQUIT</string>
     <string name="select_language">Select a language</string>
     <string name="version">Version</string>
+    <string name="update_available_title">An update is available!</string>
 </resources>

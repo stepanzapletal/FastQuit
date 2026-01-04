@@ -296,4 +296,5 @@
     <string name="enter_fastquit">OTEVŘÍT FASTQUIT</string>
     <string name="select_language">Zvol si jazyk</string>
     <string name="version">Verze</string>
+    <string name="update_available_title">Je dostupná aktualizace aplikace!</string>
 </resources>
