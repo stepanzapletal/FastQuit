@@ -1,12 +1,16 @@
 package com.stepan.fastquit
 
 import android.app.Application
+import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
 
 fun HabitEntity.toUiModel(): HabitModel {
     return HabitModel(
@@ -14,9 +18,10 @@ fun HabitEntity.toUiModel(): HabitModel {
         name = this.name,
         icon = IconMapper.getIcon(this.iconName),
         lastResetTime = this.lastResetTime,
-        lastEventTitle = "Streak",
+        lastEventTitleRes = R.string.c_streak,
         targetSeconds = this.targetSeconds,
-        targetLabel = "Goal: ${this.goalLabel}",
+        targetLabelRes = R.string.c_goal,
+        goalLabel = this.goalLabel,
         completions = this.completions,
         targetChangesCount = this.targetChangesCount
     )
@@ -32,7 +37,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addHabit(name: String, icon: String, amount: Int, unit: String, startTime: Long) {
         viewModelScope.launch {
-            val totalSeconds: Long = calculateSeconds(amount, unit)
+            val totalSeconds: Long = calculateSeconds(amount, unit.toInt(), getApplication())
             val label = "$amount $unit"
             val nextIndex = (_rawHabits.value.maxOfOrNull { it.sortIndex } ?: -1) + 1
 
@@ -123,7 +128,7 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
         viewModelScope.launch {
             val current = dao.getHabitById(habitId)
             current?.let { habit ->
-                val newTarget = calculateSeconds(amount, unit)
+                val newTarget = calculateSeconds(amount, unit.toInt(), getApplication())
                 val newLabel = "$amount $unit"
                 val newResetTime = if (resetTimer) System.currentTimeMillis() else habit.lastResetTime
 
@@ -153,7 +158,7 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
         viewModelScope.launch {
             val current = dao.getHabitById(habitId)
             current?.let { habit ->
-                val newTarget = calculateSeconds(amount, unit)
+                val newTarget = calculateSeconds(amount, unit.toInt(), getApplication())
                 val newLabel = "$amount $unit"
                 val newResetTime = if (resetTimer) System.currentTimeMillis() else habit.lastResetTime
 
@@ -185,15 +190,16 @@ class DetailViewModelFactory(private val app: Application, private val id: Int) 
     override fun <T : ViewModel> create(modelClass: Class<T>): T = DetailViewModel(app, id) as T
 }
 
-fun calculateSeconds(amount: Int, unit: String): Long {
-    return when(unit) {
-        "Seconds" -> amount.toLong()
-        "Minutes" -> amount * 60L
-        "Hours" -> amount * 3600L
-        "Days" -> amount * 86400L
-        "Weeks" -> amount * 604800L
-        "Months" -> amount * 2592000L
-        "Years" -> amount * 31536000L
+fun calculateSeconds(amount: Int, unit: Int, context: Context): Long {
+    val unitString = context.getString(unit)
+    return when (unitString) {
+        context.getString(R.string.c_seconds) -> amount.toLong()
+        context.getString(R.string.c_minutes) -> amount * 60L
+        context.getString(R.string.c_hours)   -> amount * 3600L
+        context.getString(R.string.c_days)    -> amount * 86400L
+        context.getString(R.string.c_weeks)   -> amount * 604800L
+        context.getString(R.string.c_months)  -> amount * 2592000L
+        context.getString(R.string.c_years)   -> amount * 31536000L
         else -> amount * 86400L
     }
 }

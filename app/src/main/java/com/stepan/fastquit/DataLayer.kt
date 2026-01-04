@@ -1,6 +1,8 @@
 package com.stepan.fastquit
 
+import android.annotation.SuppressLint
 import android.content.Context
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -246,26 +248,84 @@ abstract class SettingsDatabase : RoomDatabase() {
 }
 
 // ================== UTILS ==================
-
+@SuppressLint("StaticFieldLeak")
 object IconMapper {
-    val allIcons = mapOf(
-        "Energy" to Icons.Rounded.Bolt, "Gaming" to Icons.Rounded.VideogameAsset, "Gym" to Icons.Rounded.FitnessCenter,
-        "Code" to Icons.Rounded.Code, "Smoking" to Icons.Rounded.SmokingRooms, "Alcohol" to Icons.Rounded.LocalDrink,
-        "Self Harm" to Icons.Rounded.ContentCut, "Spending" to Icons.Rounded.AttachMoney, "Sleep" to Icons.Rounded.Bedtime,
-        "Reading" to Icons.Rounded.MenuBook, "Phone" to Icons.Rounded.Smartphone, "Social" to Icons.Rounded.Groups,
-        "Food" to Icons.Rounded.Restaurant, "Shopping" to Icons.Rounded.ShoppingBag, "Work" to Icons.Rounded.Work,
-        "Study" to Icons.Rounded.School, "Nature" to Icons.Rounded.Forest, "Music" to Icons.Rounded.MusicNote,
-        "TV" to Icons.Rounded.Tv, "Love" to Icons.Rounded.Favorite, "Time" to Icons.Rounded.Schedule,
-        "Idea" to Icons.Rounded.Lightbulb, "Lock" to Icons.Rounded.Lock, "Key" to Icons.Rounded.VpnKey,
-        "Home" to Icons.Rounded.Home, "Car" to Icons.Rounded.DirectionsCar, "Walk" to Icons.Rounded.DirectionsWalk,
-        "Run" to Icons.Rounded.DirectionsRun, "Bike" to Icons.Rounded.PedalBike, "Water" to Icons.Rounded.WaterDrop,
-        "Fire" to Icons.Rounded.LocalFireDepartment, "Leaf" to Icons.Rounded.Eco, "Build" to Icons.Rounded.Build,
-        "Brush" to Icons.Rounded.Brush, "Camera" to Icons.Rounded.PhotoCamera, "Mic" to Icons.Rounded.Mic,
-        "Chat" to Icons.Rounded.Chat, "Mail" to Icons.Rounded.Email, "Call" to Icons.Rounded.Call,
-        "Delete" to Icons.Rounded.Delete, "Star" to Icons.Rounded.Star, "Heart" to Icons.Rounded.Favorite,
-        "Warning" to Icons.Rounded.Warning, "Shield" to Icons.Rounded.Security, "Flag" to Icons.Rounded.Flag,
-        "Map" to Icons.Rounded.Map
-    )
-    val quickIcons = listOf("Energy", "Gaming", "Gym", "Smoking", "Alcohol", "Self Harm", "Code", "Sleep")
-    fun getIcon(name: String): ImageVector = allIcons[name] ?: Icons.Rounded.Bolt
+
+    private var context: Context? = null
+
+    fun init(context: Context) {
+        this.context = context.applicationContext
+    }
+
+    private fun s(@StringRes id: Int): String =
+        requireNotNull(context) {
+            "IconMapper not initialized. Call IconMapper.init(context) first."
+        }.getString(id)
+
+    val allIcons: Map<String, ImageVector> by lazy {
+        mapOf(
+            s(R.string.energy) to Icons.Rounded.Bolt,
+            s(R.string.gaming) to Icons.Rounded.VideogameAsset,
+            s(R.string.gym) to Icons.Rounded.FitnessCenter,
+            s(R.string.code) to Icons.Rounded.Code,
+            s(R.string.smoking) to Icons.Rounded.SmokingRooms,
+            s(R.string.alcohol) to Icons.Rounded.LocalDrink,
+            s(R.string.self_harm) to Icons.Rounded.ContentCut,
+            s(R.string.spending) to Icons.Rounded.AttachMoney,
+            s(R.string.sleep) to Icons.Rounded.Bedtime,
+            s(R.string.reading) to Icons.Rounded.MenuBook,
+            s(R.string.phone) to Icons.Rounded.Smartphone,
+            s(R.string.social) to Icons.Rounded.Groups,
+            s(R.string.food) to Icons.Rounded.Restaurant,
+            s(R.string.shopping) to Icons.Rounded.ShoppingBag,
+            s(R.string.work) to Icons.Rounded.Work,
+            s(R.string.study) to Icons.Rounded.School,
+            s(R.string.nature) to Icons.Rounded.Forest,
+            s(R.string.music) to Icons.Rounded.MusicNote,
+            s(R.string.tv) to Icons.Rounded.Tv,
+            s(R.string.love) to Icons.Rounded.Favorite,
+            s(R.string.time) to Icons.Rounded.Schedule,
+            s(R.string.idea) to Icons.Rounded.Lightbulb,
+            s(R.string.lock) to Icons.Rounded.Lock,
+            s(R.string.key) to Icons.Rounded.VpnKey,
+            s(R.string.home) to Icons.Rounded.Home,
+            s(R.string.car) to Icons.Rounded.DirectionsCar,
+            s(R.string.walk) to Icons.Rounded.DirectionsWalk,
+            s(R.string.run) to Icons.Rounded.DirectionsRun,
+            s(R.string.bike) to Icons.Rounded.PedalBike,
+            s(R.string.water) to Icons.Rounded.WaterDrop,
+            s(R.string.fire) to Icons.Rounded.LocalFireDepartment,
+            s(R.string.leaf) to Icons.Rounded.Eco,
+            s(R.string.build) to Icons.Rounded.Build,
+            s(R.string.brush) to Icons.Rounded.Brush,
+            s(R.string.camera) to Icons.Rounded.PhotoCamera,
+            s(R.string.mic) to Icons.Rounded.Mic,
+            s(R.string.chat) to Icons.Rounded.Chat,
+            s(R.string.mail) to Icons.Rounded.Email,
+            s(R.string.call) to Icons.Rounded.Call,
+            s(R.string.delete) to Icons.Rounded.Delete,
+            s(R.string.star) to Icons.Rounded.Star,
+            s(R.string.heart) to Icons.Rounded.Favorite,
+            s(R.string.warning) to Icons.Rounded.Warning,
+            s(R.string.shield) to Icons.Rounded.Security,
+            s(R.string.flag) to Icons.Rounded.Flag,
+            s(R.string.map) to Icons.Rounded.Map
+        )
+    }
+
+    val quickIcons: List<String> by lazy {
+        listOf(
+            s(R.string.energy),
+            s(R.string.gaming),
+            s(R.string.gym),
+            s(R.string.smoking),
+            s(R.string.alcohol),
+            s(R.string.self_harm),
+            s(R.string.code),
+            s(R.string.sleep)
+        )
+    }
+
+    fun getIcon(name: String): ImageVector =
+        allIcons[name] ?: Icons.Rounded.Bolt
 }

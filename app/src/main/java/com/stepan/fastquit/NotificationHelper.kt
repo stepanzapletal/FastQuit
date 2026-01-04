@@ -6,29 +6,34 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.flow.firstOrNull
 
 object Milestones {
-    val time = mapOf(
-        "24 Hours" to 86400L,
-        "3 Days" to 259200L,
-        "1 Week" to 604800L,
-        "1 Month" to 2592000L,
-        "3 Months" to 7776000L,
-        "6 Months" to 15552000L,
-        "1 Year" to 31536000L
+
+    // Use a function that takes context
+    fun time(context: Context) = mapOf(
+        context.getString(R.string._24_hours) to 86400L,
+        context.getString(R.string._3_days) to 259200L,
+        context.getString(R.string._1_week) to 604800L,
+        context.getString(R.string._1_month) to 2592000L,
+        context.getString(R.string._3_months) to 7776000L,
+        context.getString(R.string._6_months) to 15552000L,
+        context.getString(R.string._1_year) to 31536000L
     )
-    val completion = mapOf(
-        "Goal Crusher I" to 1,
-        "Goal Crusher II" to 3,
-        "Goal Crusher III" to 5,
-        "Elite" to 10,
-        "Master" to 25
+
+    fun completion(context: Context) = mapOf(
+        context.getString(R.string.goal_crusher_i) to 1,
+        context.getString(R.string.goal_crusher_ii) to 3,
+        context.getString(R.string.goal_crusher_iii) to 5,
+        context.getString(R.string.elite) to 10,
+        context.getString(R.string.master) to 25
     )
 }
+
 
 // Make this suspend so it can wait for the settings DB check
 suspend fun checkAndNotifyAchievements(
@@ -42,7 +47,7 @@ suspend fun checkAndNotifyAchievements(
     val prefs = context.getSharedPreferences("achievements", Context.MODE_PRIVATE)
 
     // 1. Check Time Milestones
-    Milestones.time.forEach { (title, requiredSeconds) ->
+    Milestones.time(context).forEach { (title, requiredSeconds) ->
         if (currentSeconds >= requiredSeconds) {
             triggerNotification(context, prefs, habitId, title, habitName)
         }
@@ -52,7 +57,7 @@ suspend fun checkAndNotifyAchievements(
     val isCurrentFinished = if (currentSeconds >= targetSeconds && targetSeconds > 0) 1 else 0
     val effectiveCompletions = storedCompletions + isCurrentFinished
 
-    Milestones.completion.forEach { (title, requiredCompletions) ->
+    Milestones.completion(context).forEach { (title, requiredCompletions) ->
         if (effectiveCompletions >= requiredCompletions) {
             triggerNotification(context, prefs, habitId, title, habitName)
         }
@@ -70,7 +75,9 @@ private suspend fun triggerNotification(
 
     if (!prefs.getBoolean(key, false)) {
         prefs.edit().putBoolean(key, true).apply()
-        sendNotification(context, "Achievement Unlocked! 🏆", "You reached $title on $habitName!")
+        sendNotification(context,
+            context.getString(R.string.achievement_unlocked_title),
+            context.getString(R.string.achievement_unlocked_content, title, habitName))
     }
 }
 
@@ -86,7 +93,8 @@ suspend fun sendNotification(context: Context, title: String, content: String) {
 
     // 2. Setup Channel
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(channelId, "Habit Milestones", NotificationManager.IMPORTANCE_DEFAULT).apply {
+        val channel = NotificationChannel(channelId,
+            context.getString(R.string.habit_milestones), NotificationManager.IMPORTANCE_DEFAULT).apply {
             // Obey global haptics switch for the notification vibration
             if (!userPrefs.hapticsGlobal) {
                 enableVibration(false)

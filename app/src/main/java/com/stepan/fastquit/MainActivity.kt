@@ -12,20 +12,19 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
-import android.util.Log
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.Indication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -93,6 +94,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.google.gson.annotations.SerializedName
 import com.stepan.fastquit.ui.theme.FastQuitTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -101,6 +103,7 @@ import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
+import retrofit2.http.Query
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -109,7 +112,8 @@ import java.util.TimeZone
 
 // Helper enum for managing high-level app states
 private enum class AppLaunchState { LOADING, UPDATE, MAIN }
-class MainActivity : ComponentActivity() {
+
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -124,11 +128,20 @@ class MainActivity : ComponentActivity() {
             )
             val prefs by settingsViewModel.preferences.collectAsState()
 
+            // Apply Language Logic on Start
+            LaunchedEffect(prefs.language) {
+                val targetTag = if (prefs.language == "System") "" else (LanguageHelper.supportedLanguages[prefs.language] ?: "en")
+                val currentTag = LanguageHelper.getCurrentCode()
+
+                if (currentTag != targetTag) {
+                    LanguageHelper.setLanguage(targetTag)
+                }
+            }
+
             // 2. Database Update Logic
             var needsDatabaseUpdate by remember { mutableStateOf<Boolean?>(null) }
             var showUpdateScreen by remember { mutableStateOf(false) }
 
-            // Reactive Launch Effect to trigger the update screen from Settings or Logic
             LaunchedEffect(prefs.forceUpdateScreen) {
                 val needsHabitUpdate = AppDatabase.needsUpdate(applicationContext)
                 val needsSettingsUpdate = SettingsDatabase.needsUpdate(applicationContext)
@@ -140,38 +153,33 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 3. Determine current App State
+            // 3. App State
             val appState = when {
                 showUpdateScreen -> AppLaunchState.UPDATE
                 needsDatabaseUpdate == false -> AppLaunchState.MAIN
                 else -> AppLaunchState.LOADING
             }
 
-            // 4. Calculate Theme
+            // 4. Theme
             val darkTheme = when (prefs.theme) {
                 "Light" -> false
                 "Dark" -> true
                 else -> isSystemInDarkTheme()
             }
 
-            // 5. Content with Transitions
+            // 5. Content
             FastQuitTheme(darkTheme = darkTheme) {
                 AnimatedContent(
                     targetState = appState,
                     transitionSpec = {
                         if (initialState == AppLaunchState.UPDATE && targetState == AppLaunchState.MAIN) {
-                            // SMOOTH SLIDE DOWN: Update Screen slides down off screen, revealing Main App behind it
                             (fadeIn(animationSpec = tween(800)) togetherWith
                                     slideOutVertically(
                                         animationSpec = tween(800, easing = FastOutSlowInEasing),
-                                        targetOffsetY = { fullHeight -> fullHeight } // Slide down to bottom
+                                        targetOffsetY = { fullHeight -> fullHeight }
                                     ))
-                                .apply {
-                                    // CRITICAL: Keep Main App (target) BEHIND Update Screen (initial)
-                                    targetContentZIndex = -1f
-                                }
+                                .apply { targetContentZIndex = -1f }
                         } else {
-                            // Standard Crossfade for Loading -> Main or Loading -> Update
                             fadeIn(tween(400)) togetherWith fadeOut(tween(400))
                         }
                     },
@@ -188,7 +196,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         AppLaunchState.MAIN -> {
-                            // MAIN APP CONTENT
                             val navController = rememberNavController()
                             val context = LocalContext.current
 
@@ -242,10 +249,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 // CONSTANT FOR NICE GREEN
 val SuccessGreen = Color(0xFF00D158)
 
-data class HabitModel(val id: Int, val name: String, val icon: ImageVector, val lastResetTime: Long, val lastEventTitle: String, val targetSeconds: Long, val targetLabel: String, val completions: Int, val targetChangesCount: Int)
+data class HabitModel(
+    val id: Int,
+    val name: String,
+    val icon: ImageVector,
+    val lastResetTime: Long,
+    val lastEventTitleRes: Int,
+    val targetSeconds: Long,
+    val targetLabelRes: Int,
+    val goalLabel: String,
+    val completions: Int,
+    val targetChangesCount: Int
+)
+
 
 fun formatLiveDuration(diffMillis: Long): String {
     val seconds = diffMillis / 1000
@@ -264,12 +284,7 @@ enum class SettingsPage { Main, Basic, Backup, Dev, About, Licenses, Haptics }
 @Composable
 fun SettingsScreen(navController: NavController, settingsViewModel: SettingsViewModel = viewModel()) {
     var currentPage by remember { mutableStateOf(SettingsPage.Main) }
-
-    // Handle Android Back Button
-    BackHandler(enabled = currentPage != SettingsPage.Main) {
-        currentPage = SettingsPage.Main
-    }
-
+    BackHandler(enabled = currentPage != SettingsPage.Main) { currentPage = SettingsPage.Main }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     Scaffold(
@@ -280,22 +295,20 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
                 title = {
                     Text(
                         when(currentPage) {
-                            SettingsPage.Main -> "Settings"
-                            SettingsPage.Basic -> "Preferences"
-                            SettingsPage.Backup -> "Data & Sync"
-                            SettingsPage.Dev -> "Lab"
-                            SettingsPage.About -> "About"
-                            SettingsPage.Licenses -> "Legal"
-                            SettingsPage.Haptics -> "Haptics"
+                            SettingsPage.Main -> stringResource(R.string.settings)
+                            SettingsPage.Basic -> stringResource(R.string.preferences)
+                            SettingsPage.Backup -> stringResource(R.string.data_sync)
+                            SettingsPage.Dev -> stringResource(R.string.lab)
+                            SettingsPage.About -> stringResource(R.string.about)
+                            SettingsPage.Licenses -> stringResource(R.string.legal)
+                            SettingsPage.Haptics -> stringResource(R.string.haptics)
                         },
                         fontWeight = FontWeight.ExtraBold
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (currentPage == SettingsPage.Main) navController.popBackStack() else currentPage = SettingsPage.Main
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    IconButton(onClick = { if (currentPage == SettingsPage.Main) navController.popBackStack() else currentPage = SettingsPage.Main }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -307,23 +320,17 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
             AnimatedContent(
                 targetState = currentPage,
                 transitionSpec = {
-                    // Shared specs for consistency
                     val duration = 400
-                    val easing = FastOutSlowInEasing // Smooth curve
-
-                    // Determine direction
+                    val easing = FastOutSlowInEasing
                     val isForward = when {
                         initialState == SettingsPage.Main && targetState != SettingsPage.Main -> true
                         targetState == SettingsPage.Main && initialState != SettingsPage.Main -> false
                         else -> targetState.ordinal > initialState.ordinal
                     }
-
                     if (isForward) {
-                        // Forward: Enter from Right, Exit to Left (with parallax)
                         slideInHorizontally(tween(duration, easing = easing)) { it } + fadeIn(tween(duration)) togetherWith
                                 slideOutHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeOut(tween(duration))
                     } else {
-                        // Backward: Enter from Left (with parallax), Exit to Right
                         slideInHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeIn(tween(duration)) togetherWith
                                 slideOutHorizontally(tween(duration, easing = easing)) { it } + fadeOut(tween(duration))
                     }
@@ -344,6 +351,117 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
     }
 }
 
+// ---------------------------------------------------------
+//  NEW EXPRESSIVE POPUP COMPONENT
+// ---------------------------------------------------------
+data class SelectionOption(val display: String, val value: String)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExpressiveSelectionSheet(title: String, options: List<SelectionOption>, selectedOptionValue: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(text = title, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp))
+            LazyColumn {
+                items(options) { option ->
+                    val isSelected = option.value == selectedOptionValue
+                    ListItem(
+                        headlineContent = { Text(text = option.display, style = MaterialTheme.typography.bodyLarge, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) },
+                        trailingContent = { if (isSelected) { Icon(imageVector = Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp)) } },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { onSelect(option.value); onDismiss() }.padding(horizontal = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+// --- BASIC SETTINGS ---
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BasicSettings(viewModel: SettingsViewModel, onNavigate: (SettingsPage) -> Unit) {
+    val prefs by viewModel.preferences.collectAsState()
+    val context = LocalContext.current
+    var showLanguageSheet by remember { mutableStateOf(false) }
+    var showThemeSheet by remember { mutableStateOf(false) }
+    val currentLanguageSubtitle by remember { derivedStateOf { LanguageHelper.getDisplayLanguage(context) } }
+
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        ExpressiveSection(stringResource(R.string.appearance)) {
+            ExpressiveItem(title = stringResource(R.string.app_theme), subtitle = when(prefs.theme) { "Light" -> stringResource(R.string.c_light); "Dark" -> stringResource(R.string.c_dark); else -> stringResource(R.string.c_system) }, icon = Icons.Rounded.Palette) { showThemeSheet = true }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+            ExpressiveItem(title = stringResource(R.string.language), subtitle = stringResource(R.string.lanaguage_subtitle, currentLanguageSubtitle), icon = Icons.Rounded.Language) { showLanguageSheet = true }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        ExpressiveSection(stringResource(R.string.behavior)) {
+            ExpressiveToggleItem(title = stringResource(R.string.notifications), subtitle = stringResource(R.string.goal_alerts_milestones), icon = Icons.Rounded.Notifications, checked = prefs.notificationsEnabled, onCheckedChange = { viewModel.update { p -> p.copy(notificationsEnabled = !p.notificationsEnabled) } })
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+            ExpressiveItem(title = stringResource(R.string.haptics), subtitle = stringResource(R.string.haptic_preview), icon = Icons.Rounded.Vibration) { onNavigate(SettingsPage.Haptics) }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+            ExpressiveToggleItem(title = stringResource(R.string.auto_check_updates), subtitle = stringResource(R.string.check_github_for_versions), icon = Icons.Rounded.SystemUpdate, checked = prefs.autoUpdateEnabled, onCheckedChange = { viewModel.update { p -> p.copy(autoUpdateEnabled = !p.autoUpdateEnabled) } })
+        }
+    }
+    if (showThemeSheet) {
+        val themeOptions = listOf(SelectionOption(stringResource(R.string.c_system), "System"), SelectionOption(stringResource(R.string.c_light), "Light"), SelectionOption(stringResource(R.string.c_dark), "Dark"))
+        ExpressiveSelectionSheet(title = stringResource(R.string.choose_theme), options = themeOptions, selectedOptionValue = prefs.theme, onDismiss = { showThemeSheet = false }, onSelect = { viewModel.update { p -> p.copy(theme = it) } })
+    }
+    if (showLanguageSheet) {
+        val languageOptions = remember {
+            val list = mutableListOf<SelectionOption>()
+            list.add(SelectionOption(context.getString(R.string.c_system), "System"))
+            LanguageHelper.supportedLanguages.forEach { (name, _) -> list.add(SelectionOption(name, name)) }
+            list
+        }
+        ExpressiveSelectionSheet(title = stringResource(R.string.select_language), options = languageOptions, selectedOptionValue = prefs.language, onDismiss = { showLanguageSheet = false }, onSelect = { newValue ->
+            viewModel.update { it.copy(language = newValue) }
+            val codeToSet = if (newValue == "System") "" else (LanguageHelper.supportedLanguages[newValue] ?: "en")
+            LanguageHelper.setLanguage(codeToSet)
+        })
+    }
+}
+
+
+// ---------------------------------------------------------
+//  LANGUAGE HELPER OBJECT
+// ---------------------------------------------------------
+object LanguageHelper {
+    // Map of Display Name -> ISO Code
+    val supportedLanguages = mapOf(
+        "English" to "en",
+        "Čeština" to "cs"
+    )
+
+    fun setLanguage(code: String) {
+        if (code.isEmpty()) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+        } else {
+            val appLocale = LocaleListCompat.forLanguageTags(code)
+            AppCompatDelegate.setApplicationLocales(appLocale)
+        }
+    }
+
+    fun getCurrentCode(): String {
+        val currentAppLocales = AppCompatDelegate.getApplicationLocales()
+        return if (!currentAppLocales.isEmpty) {
+            currentAppLocales.get(0)?.language ?: "en"
+        } else {
+            "" // Represents System Default
+        }
+    }
+
+    fun getDisplayLanguage(context: Context): String {
+        val code = getCurrentCode()
+        return if (code.isEmpty()) {
+            context.getString(R.string.c_system)
+        } else {
+            // Find the key in our supported map, or default to English
+            supportedLanguages.entries.find { it.value == code }?.key ?: "English"
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HapticsSettings(viewModel: SettingsViewModel) {
@@ -355,10 +473,10 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        ExpressiveSection("Master Control") {
+        ExpressiveSection(stringResource(R.string.master_control)) {
             ExpressiveToggleItem(
-                title = "Global Haptics",
-                subtitle = "Master switch for all haptics",
+                title = stringResource(R.string.global_haptics),
+                subtitle = stringResource(R.string.master_switch_for_all_haptics),
                 icon = Icons.Rounded.Vibration,
                 checked = prefs.hapticsGlobal,
                 onCheckedChange = { viewModel.update { it.copy(hapticsGlobal = !it.hapticsGlobal) } }
@@ -369,10 +487,10 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
 
         AnimatedVisibility(visible = prefs.hapticsGlobal) {
             Column {
-                ExpressiveSection("Tactile Details") {
+                ExpressiveSection(stringResource(R.string.tactile_details)) {
                     ExpressiveToggleItem(
-                        title = "Timer Ticks",
-                        subtitle = "Subtle pulse every second",
+                        title = stringResource(R.string.timer_ticks),
+                        subtitle = stringResource(R.string.subtle_pulse_every_second),
                         icon = Icons.Rounded.Timer,
                         checked = prefs.hapticsTimer,
                         onCheckedChange = { viewModel.update { it.copy(hapticsTimer = !it.hapticsTimer) } }
@@ -384,8 +502,8 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                     )
 
                     ExpressiveToggleItem(
-                        title = "Event Success",
-                        subtitle = "Thump on achievements",
+                        title = stringResource(R.string.event_success),
+                        subtitle = stringResource(R.string.thump_on_achievements),
                         icon = Icons.Rounded.Celebration,
                         checked = prefs.hapticsEvents,
                         onCheckedChange = { viewModel.update { it.copy(hapticsEvents = !it.hapticsEvents) } }
@@ -397,8 +515,8 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                     )
 
                     ExpressiveToggleItem(
-                        title = "UI Interaction",
-                        subtitle = "Clicks on buttons and cards",
+                        title = stringResource(R.string.ui_interaction),
+                        subtitle = stringResource(R.string.clicks_on_buttons_and_cards),
                         icon = Icons.Rounded.TouchApp,
                         checked = prefs.hapticsUI,
                         onCheckedChange = { viewModel.update { it.copy(hapticsUI = !it.hapticsUI) } }
@@ -410,8 +528,8 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                     )
 
                     ExpressiveToggleItem(
-                        title = "Alerts & Warnings",
-                        subtitle = "Resistive feel on destructive actions",
+                        title = stringResource(R.string.alerts_warnings),
+                        subtitle = stringResource(R.string.resistive_feel_on_destructive_actions),
                         icon = Icons.Rounded.Warning,
                         checked = prefs.hapticsWarnings,
                         onCheckedChange = { viewModel.update { it.copy(hapticsWarnings = !it.hapticsWarnings) } }
@@ -420,7 +538,6 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Add haptic tester card for quick access (similar to DevSettings)
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -433,7 +550,7 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "Haptic Preview",
+                            stringResource(R.string.haptic_preview),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center
@@ -442,7 +559,7 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            "Test your settings in real-time",
+                            stringResource(R.string.test_real_time),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -453,10 +570,10 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
 
                         val view = LocalView.current
                         val tests = listOf(
-                            "Click" to { HapticHelper.click(view, prefs) },
-                            "Tick" to { HapticHelper.tick(view, prefs) },
-                            "Success" to { HapticHelper.success(view, prefs) },
-                            "Warning" to { HapticHelper.warning(view, prefs) }
+                            stringResource(R.string.click) to { HapticHelper.click(view, prefs) },
+                            stringResource(R.string.tick) to { HapticHelper.tick(view, prefs) },
+                            stringResource(R.string.success) to { HapticHelper.success(view, prefs) },
+                            stringResource(R.string.warning) to { HapticHelper.warning(view, prefs) }
                         )
 
                         LazyVerticalGrid(
@@ -480,7 +597,6 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
             }
         }
 
-        // Show hint when global haptics is disabled
         AnimatedVisibility(
             visible = !prefs.hapticsGlobal,
             enter = fadeIn() + expandVertically(),
@@ -509,7 +625,7 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Text(
-                        "Turn on Global Haptics to customize individual feedback types",
+                        stringResource(R.string.global_haptic_info),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
@@ -517,20 +633,6 @@ fun HapticsSettings(viewModel: SettingsViewModel) {
                 }
             }
         }
-    }
-}
-
-@Composable
-fun HapticToggleItem(title: String, subtitle: String, checked: Boolean, onToggle: () -> Unit) {
-    Row(modifier = Modifier
-        .fillMaxWidth()
-        .clickable { onToggle() }
-        .padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
     }
 }
 
@@ -543,184 +645,27 @@ fun SettingsMainList(onNavigate: (SettingsPage) -> Unit) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        ExpressiveSection("General") {
-            ExpressiveItem("Basic Options", "Language, Notifications, Theme", Icons.Rounded.Tune) { onNavigate(SettingsPage.Basic) }
+        ExpressiveSection(stringResource(R.string.general)) {
+            ExpressiveItem(stringResource(R.string.basic_options), stringResource(R.string.language_notifications_theme), Icons.Rounded.Tune) { onNavigate(SettingsPage.Basic) }
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpressiveItem("Backup & Restore", "Export data locally", Icons.Rounded.CloudUpload) { onNavigate(SettingsPage.Backup) }
+            ExpressiveItem(stringResource(R.string.backup_restore), stringResource(R.string.export_data_locally), Icons.Rounded.CloudUpload) { onNavigate(SettingsPage.Backup) }
         }
 
-        ExpressiveSection("Advanced") {
-            ExpressiveItem("Dev / Lab Options", "Experimental features & stats", Icons.Rounded.Science) { onNavigate(SettingsPage.Dev) }
+        ExpressiveSection(stringResource(R.string.advanced)) {
+            ExpressiveItem(stringResource(R.string.dev_lab_options),
+                stringResource(R.string.experimental_features_stats), Icons.Rounded.Science) { onNavigate(SettingsPage.Dev) }
         }
 
-        ExpressiveSection("Info") {
-            ExpressiveItem("About App", "Credits & FAQ", Icons.Rounded.Info) { onNavigate(SettingsPage.About) }
+        ExpressiveSection(stringResource(R.string.info)) {
+            ExpressiveItem(stringResource(R.string.about_app), stringResource(R.string.credits_faq), Icons.Rounded.Info) { onNavigate(SettingsPage.About) }
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpressiveItem("Licensing", "MIT License", Icons.Rounded.Gavel) { onNavigate(SettingsPage.Licenses) }
+            ExpressiveItem(stringResource(R.string.licensing), stringResource(R.string.mit_license), Icons.Rounded.Gavel) { onNavigate(SettingsPage.Licenses) }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
-// --- SUB-SCREENS ---
-
-@Composable
-fun BasicSettings(viewModel: SettingsViewModel, onNavigate: (SettingsPage) -> Unit) {
-    val prefs by viewModel.preferences.collectAsState()
-
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .verticalScroll(rememberScrollState())
-        .padding(16.dp)) {
-        ExpressiveSection("Appearance") {
-            var showThemeDialog by remember { mutableStateOf(false) }
-            ExpressiveItem("App Theme", prefs.theme, Icons.Rounded.Palette) { showThemeDialog = true }
-            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpressiveItem("Language", "${prefs.language} (Default)", Icons.Rounded.Language) { /* Future */ }
-
-            if(showThemeDialog) {
-                AlertDialog(
-                    onDismissRequest = { showThemeDialog = false },
-                    confirmButton = { TextButton(onClick = { showThemeDialog = false }) { Text("Done") } },
-                    title = { Text("Choose Theme") },
-                    text = {
-                        Column {
-                            listOf("System", "Light", "Dark").forEach { t ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.update { it.copy(theme = t) }; showThemeDialog =
-                                            false
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(selected = (prefs.theme == t), onClick = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(t)
-                                }
-                            }
-                        }
-                    }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        ExpressiveSection("Behavior") {
-            // Expressive Notifications
-            ExpressiveToggleItem(
-                title = "Notifications",
-                subtitle = "Goal alerts & milestones",
-                icon = Icons.Rounded.Notifications,
-                checked = prefs.notificationsEnabled,
-                onCheckedChange = { newCheckedState ->
-                    viewModel.update { it.copy(notificationsEnabled = newCheckedState) }
-                }
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-
-            ExpressiveItem("Haptic Feedback", "Customize tactile response", Icons.Rounded.Vibration) {
-                onNavigate(SettingsPage.Haptics)
-            }
-
-            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-
-            // Expressive Updates
-            ExpressiveToggleItem(
-                title = "Auto-Check Updates",
-                subtitle = "Check GitHub for versions",
-                icon = Icons.Rounded.SystemUpdate,
-                checked = prefs.autoUpdateEnabled,
-                onCheckedChange = { newCheckedState ->
-                    viewModel.update { it.copy(autoUpdateEnabled = newCheckedState) }
-                }
-            )
-
-            AnimatedVisibility(visible = prefs.autoUpdateEnabled) {
-                Column {
-                    HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-                    var expanded by remember { mutableStateOf(false) }
-                    Box {
-                        ExpressiveItem("Check Frequency", prefs.updateFrequency, Icons.Rounded.Timer) { expanded = true }
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false },
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            listOf("15 Mins", "1 Hour", "6 Hours", "24 Hours").forEach { f ->
-                                DropdownMenuItem(text = { Text(f) }, onClick = { viewModel.update { it.copy(updateFrequency = f) }; expanded = false })
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-@Composable
-fun ExpressiveToggleItem(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 1. Improved semantics for accessibility
-            .semantics {
-                // Makes the entire row behave like a single switch for screen readers
-                toggleableState = ToggleableState(checked)
-                role = Role.Switch
-            }
-            // 2. Simplified clickable modifier
-            .clickable(
-                // The default ripple indication will be used
-                role = Role.Switch, // Matching the semantics role
-                onClick = { onCheckedChange(!checked) }
-            )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.size(48.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null, // The row's semantics cover this
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        // The Switch is purely decorative; the Row handles all logic and accessibility.
-        Switch(
-            checked = checked,
-            onCheckedChange = null // Keep null to prevent conflicting interactions
-        )
-    }
-}
 @Composable
 fun BackupSettings() {
     Column(modifier = Modifier
@@ -730,13 +675,27 @@ fun BackupSettings() {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.CloudOff, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer) }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Local Vault", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+        Text(stringResource(R.string.local_vault), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Your data is currently stored locally on this device. Cloud sync and JSON export features are coming in version 2.0.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.vault_temp_info), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(32.dp))
-        Button(onClick = {}, modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp), shape = RoundedCornerShape(12.dp)) { Text("Export Data (Soon)") }
+        Button(
+            onClick = {},
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            enabled = false
+        ) { Text(stringResource(R.string.export_data_soon)) }
+    }
+}
+
+fun getAppVersion(context: Context): String {
+    return try {
+        val pInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        pInfo.versionName ?: "Unknown"
+    } catch (e: PackageManager.NameNotFoundException) {
+        "Unknown"
     }
 }
 
@@ -744,7 +703,7 @@ fun BackupSettings() {
 @Composable
 fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
     val context = LocalContext.current
-    val view = androidx.compose.ui.platform.LocalView.current
+    val view = LocalView.current
     val prefs by settingsViewModel.preferences.collectAsState()
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -794,15 +753,18 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), modifier = Modifier.size(80.dp)) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(40.dp)) }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("Danger Zone", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black))
-                Text("Deleting a database is permanent. The app will close immediately.", textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
+                Text(stringResource(R.string.danger_zone), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black))
+                Text(stringResource(R.string.database_reset_warning), textAlign = TextAlign.Center, modifier = Modifier.padding(vertical = 8.dp))
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -810,15 +772,17 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                     onClick = {
                         HapticHelper.warning(view, prefs)
                         context.deleteDatabase("fastquit_db")
-                        android.os.Process.killProcess(android.os.Process.myPid())
+                        Process.killProcess(Process.myPid())
                     },
-                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Icon(Icons.Rounded.History, null)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("NUKE HABITS & HISTORY", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.nuke_habits_history), fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -827,61 +791,73 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                     onClick = {
                         HapticHelper.warning(view, prefs)
                         context.deleteDatabase("settings_db")
-                        android.os.Process.killProcess(android.os.Process.myPid())
+                        Process.killProcess(Process.myPid())
                     },
-                    modifier = Modifier.fillMaxWidth().height(64.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Icon(Icons.Rounded.SettingsBackupRestore, null)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("NUKE ALL SETTINGS", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.nuke_all_settings), fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        ExpressiveSection("Build Info") {
-            ExpressiveItem("App Version", "1.0.0 (Alpha)", Icons.Rounded.Android) {}
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .verticalScroll(rememberScrollState())
+        .padding(16.dp)) {
+        ExpressiveSection(stringResource(R.string.build_info)) {
+            ExpressiveItem(
+                stringResource(R.string.app_version),
+                getAppVersion(context),
+                Icons.Rounded.Android
+            ) {}
 
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
             ExpressiveItem(
-                title = "Habits DB",
-                subtitle = if (isLoadingVersions) "Loading..." else "Schema: v$HABIT_DB_VERSION • Stored: v$habitDbStoredVersion",
+                title = stringResource(R.string.habits_db),
+                subtitle = if (isLoadingVersions) stringResource(R.string.loading) else stringResource(
+                    R.string.schema_v_stored_v, HABIT_DB_VERSION, habitDbStoredVersion
+                ),
                 icon = Icons.Rounded.Storage
             ) {}
 
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
             ExpressiveItem(
-                title = "Settings DB",
-                subtitle = if (isLoadingVersions) "Loading..." else "Schema: v$SETTINGS_DB_VERSION • Stored: v$settingsDbStoredVersion",
+                title = stringResource(R.string.settings_db),
+                subtitle = if (isLoadingVersions) stringResource(R.string.loading) else stringResource(
+                    R.string.schema_v_stored_v, SETTINGS_DB_VERSION, settingsDbStoredVersion
+                ),
                 icon = Icons.Rounded.SettingsSystemDaydream
             ) {}
 
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
             ExpressiveItem(
-                title = "Database Migration",
+                title = stringResource(R.string.database_migration),
                 subtitle = when(needsDatabaseUpdate) {
-                    true -> "Update required."
-                    false -> "Database is up to date."
-                    else -> "Checking status..."
+                    true -> stringResource(R.string.update_required)
+                    false -> stringResource(R.string.database_is_up_to_date)
+                    else -> stringResource(R.string.checking_status)
                 },
                 icon = Icons.Rounded.SystemUpdate,
                 onClick = { if (needsDatabaseUpdate == true) showUpdateScreen = true }
             )
 
-            ExpressiveSection(title = "System Debug") {
+            ExpressiveSection(title = stringResource(R.string.system_debug)) {
                 ExpressiveToggleItem(
-                    title = "Force Update Screen",
-                    subtitle = "Test the migration UI on next launch",
+                    title = stringResource(R.string.force_update_screen),
+                    subtitle = stringResource(R.string.test_the_migration_ui_on_next_launch),
                     icon = Icons.Rounded.SystemUpdate,
                     checked = prefs.forceUpdateScreen,
                     onCheckedChange = { newValue ->
-                        // Update the preference in the DataStore/Database
                         settingsViewModel.update { it.copy(forceUpdateScreen = newValue) }
                     }
                 )
@@ -890,14 +866,14 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text("HAPTIC ENGINE TESTER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+        Text(stringResource(R.string.haptic_engine_tester), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 val tests = listOf(
-                    "Click" to { HapticHelper.click(view, prefs) },
-                    "Tick" to { HapticHelper.tick(view, prefs) },
-                    "Success" to { HapticHelper.success(view, prefs) },
-                    "Warning" to { HapticHelper.warning(view, prefs) }
+                    stringResource(R.string.click) to { HapticHelper.click(view, prefs) },
+                    stringResource(R.string.tick) to { HapticHelper.tick(view, prefs) },
+                    stringResource(R.string.success) to { HapticHelper.success(view, prefs) },
+                    stringResource(R.string.warning) to { HapticHelper.warning(view, prefs) }
                 )
                 LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(140.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(tests) { (label, action) ->
@@ -909,23 +885,25 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        ExpressiveSection("Lab Tools") {
+        ExpressiveSection(stringResource(R.string.lab_tools)) {
             val scope = rememberCoroutineScope()
-            ExpressiveItem("Test Notification", "Sends a dummy alert", Icons.Rounded.Notifications) {
-                scope.launch { sendNotification(context, "Test", "Notification Test") }
+            ExpressiveItem(stringResource(R.string.test_notification),
+                stringResource(R.string.sends_a_dummy_alert), Icons.Rounded.Notifications) {
+                scope.launch { sendNotification(context,
+                    context.getString(R.string.test), context.getString(R.string.notification_test)) }
             }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text("RUNTIME STATS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+        Text(stringResource(R.string.runtime_stats), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("PKG: ${context.packageName}", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+                Text(stringResource(R.string.pkg_title, context.packageName), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                Text("TS: $now", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
+                Text(stringResource(R.string.timestamp, now), fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                Text("UPTIME: ${android.os.SystemClock.elapsedRealtime() / 1000}s", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = SuccessGreen)
+                Text(stringResource(R.string.uptime_s, SystemClock.elapsedRealtime() / 1000), fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = SuccessGreen)
             }
         }
 
@@ -934,15 +912,18 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
         Button(
             onClick = { showNukeSheet = true },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
             Icon(Icons.Rounded.DeleteForever, null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("OPEN DESTROYER MENU", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.open_destroyer_menu), fontWeight = FontWeight.Bold)
         }
     }
 }
+
 @Composable
 fun AboutSettings() {
     Column(modifier = Modifier
@@ -957,7 +938,7 @@ fun AboutSettings() {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Image(
                             painter = painterResource(id = R.drawable.profile), // Ensure R.drawable.profile exists
-                            contentDescription = "Insecurity",
+                            contentDescription = stringResource(R.string.my_username),
                             modifier = Modifier
                                 .size(70.dp)
                                 .clip(CircleShape)
@@ -965,12 +946,12 @@ fun AboutSettings() {
                             contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Insecurity", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("Developer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text(stringResource(R.string.my_username), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(stringResource(R.string.my_role), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
 
                     Spacer(modifier = Modifier.width(24.dp))
-                    Text("&", style = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.surfaceVariant))
+                    Text(stringResource(R.string.amperstand), style = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.surfaceVariant))
                     Spacer(modifier = Modifier.width(24.dp))
 
                     // AI
@@ -979,26 +960,35 @@ fun AboutSettings() {
                             Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(32.dp)) }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Gemini", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("Co-Pilot", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text(stringResource(R.string.helper), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(stringResource(R.string.helper_role), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("Crafted with <3", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("(AI was used for debugging)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(top = 4.dp))
+                Text(stringResource(R.string.crafted_with_love), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.ai_debug), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(top = 4.dp))
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        Text("F.A.Q.", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Text(stringResource(R.string.faq), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
         Spacer(modifier = Modifier.height(16.dp))
 
-        ExpressiveSection("Questions") {
-            ExpandableItem("Why I made this app?", "To help myself and others break free from bad habits using a clean, guilt-free interface.")
+        ExpressiveSection(stringResource(R.string.questions)) {
+            ExpandableItem(
+                stringResource(R.string.q_1),
+                stringResource(R.string.a_1)
+            )
             HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpandableItem("Is my data safe?", "Yes! 100% local. Your data never leaves this phone.")
+            ExpandableItem(
+                stringResource(R.string.q_2),
+                stringResource(R.string.a_2)
+            )
             HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpandableItem("Future plans?", "Just general bux fixes and whatever the people want!")
+            ExpandableItem(
+                stringResource(R.string.q_3),
+                stringResource(R.string.a_3)
+            )
         }
     }
 }
@@ -1009,21 +999,14 @@ fun LicenseSettings() {
         .fillMaxSize()
         .verticalScroll(rememberScrollState())
         .padding(16.dp)) {
-        // Removed duplicate "Legal" Text header here
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), shape = RoundedCornerShape(24.dp)) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("MIT License", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                Text(stringResource(R.string.mit_license), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Copyright (c) 2026 Stepan", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
+                Text(stringResource(R.string.copyright), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = """
-                        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-                        The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-                        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-                    """.trimIndent(),
+                    text = stringResource(R.string.mit_license_text).trimIndent(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace
@@ -1084,6 +1067,61 @@ fun ExpressiveItem(title: String, subtitle: String, icon: ImageVector, onClick: 
 }
 
 @Composable
+fun ExpressiveToggleItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                toggleableState = ToggleableState(checked)
+                role = Role.Switch
+            }
+            .clickable(
+                role = Role.Switch,
+                onClick = { onCheckedChange(!checked) }
+            )
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null // Keep null to prevent conflicting interactions
+        )
+    }
+}
+
+@Composable
 fun ExpandableItem(title: String, body: String) {
     var expanded by remember { mutableStateOf(false) }
     Column(modifier = Modifier
@@ -1099,35 +1137,60 @@ fun ExpandableItem(title: String, body: String) {
     }
 }
 
-// ===================== HOME SCREEN (Unchanged Logic) =====================
+// ===================== HOME SCREEN =====================
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = viewModel()) {
     val habitList by viewModel.habits.collectAsState()
-    var quote by remember { mutableStateOf(ApiQuote("The only way out is through.", "Unknown")) }
+
+    // Initial State is loading dots
+    var quote by remember { mutableStateOf(ApiQuote("...", "...")) }
+
     var refreshCount by remember { mutableIntStateOf(0) }
     var isRefreshing by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
-    LaunchedEffect(refreshCount) { try { quote = withContext(Dispatchers.IO) { NetworkModule.api.getRandomQuote() } } catch (e: Exception) { e.printStackTrace() } }
+    val currentLangCode = LanguageHelper.getCurrentCode()
+
+    LaunchedEffect(Unit) {
+        while (true) { delay(1000); now = System.currentTimeMillis() }
+    }
+
+    // UPDATED QUOTE FETCHING
+    LaunchedEffect(refreshCount) {
+        try {
+            // Fetch asynchronously on IO thread
+            quote = withContext(Dispatchers.IO) {
+                QuoteManager.getMotivationalQuote(currentLangCode)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Surface(shape = RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), onClick = { refreshCount++ }, modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-                .zIndex(1f)) {
-                Column(modifier = Modifier
-                    .statusBarsPadding()
-                    .padding(24.dp)) {
+            Surface(
+                shape = RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                onClick = { refreshCount++ },
+                modifier = Modifier.fillMaxWidth().animateContentSize().zIndex(1f)
+            ) {
+                Column(modifier = Modifier.statusBarsPadding().padding(24.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(modifier = Modifier.weight(1f)) {
-                            AnimatedContent(targetState = quote, transitionSpec = { (fadeIn(animationSpec = tween(220, delayMillis = 90)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220, delayMillis = 90))).togetherWith(fadeOut(animationSpec = tween(90))) }, label = "QuoteAnim") { targetQuote ->
+                            AnimatedContent(
+                                targetState = quote,
+                                transitionSpec = {
+                                    (fadeIn(animationSpec = tween(220, delayMillis = 90)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220, delayMillis = 90)))
+                                        .togetherWith(fadeOut(animationSpec = tween(90)))
+                                },
+                                label = "QuoteAnim"
+                            ) { targetQuote ->
                                 Column {
                                     Text("\"${targetQuote.quote}\"", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -1136,9 +1199,11 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
                             }
                         }
                         Box(modifier = Modifier.offset(y = (-8).dp)) {
-                            // SETTINGS BUTTON
-                            FilledTonalIconButton(onClick = { navController.navigate("settings") }, colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)) {
-                                Icon(Icons.Rounded.Settings, "Settings")
+                            FilledTonalIconButton(
+                                onClick = { navController.navigate("settings") },
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)
+                            ) {
+                                Icon(Icons.Rounded.Settings, stringResource(R.string.settings))
                             }
                         }
                     }
@@ -1146,16 +1211,29 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { showBottomSheet = true }, icon = { Icon(Icons.Default.Add, "Add") }, text = { Text("New Habit") }, expanded = true)
+            ExtendedFloatingActionButton(
+                onClick = { showBottomSheet = true },
+                icon = { Icon(Icons.Default.Add, stringResource(R.string.add)) },
+                text = { Text(stringResource(R.string.new_habit)) },
+                expanded = true
+            )
         }
     ) { innerPadding ->
-        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; Handler(
-            Looper.getMainLooper()).postDelayed({ isRefreshing = false }, 1000) }, state = pullState, modifier = Modifier
-            .fillMaxSize()
-            .padding(top = innerPadding.calculateTopPadding()), indicator = { PullToRefreshDefaults.LoadingIndicator(state = pullState, isRefreshing = isRefreshing, modifier = Modifier.align(Alignment.TopCenter)) }) {
-            LazyColumn(modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                refreshCount++
+                Handler(Looper.getMainLooper()).postDelayed({ isRefreshing = false }, 1000)
+            },
+            state = pullState,
+            modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding()),
+            indicator = { PullToRefreshDefaults.LoadingIndicator(state = pullState, isRefreshing = isRefreshing, modifier = Modifier.align(Alignment.TopCenter)) }
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 item { Spacer(modifier = Modifier.height(16.dp)) }
                 items(items = habitList, key = { it.id }) { habit ->
                     val context = LocalContext.current
@@ -1164,20 +1242,102 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
                         checkAndNotifyAchievements(context, habit.name, habit.id, seconds, habit.completions, habit.targetSeconds)
                     }
                     Box(modifier = Modifier.animateItem()) {
-                        HabitCard(habit = habit, now = now, navController = navController, onDelete = { viewModel.deleteHabit(habit.id) }, onMoveUp = { viewModel.moveHabit(habit.id, true) }, onMoveDown = { viewModel.moveHabit(habit.id, false) })
+                        HabitCard(
+                            habit = habit,
+                            now = now,
+                            navController = navController,
+                            onDelete = { viewModel.deleteHabit(habit.id) },
+                            onMoveUp = { viewModel.moveHabit(habit.id, true) },
+                            onMoveDown = { viewModel.moveHabit(habit.id, false) }
+                        )
                     }
                 }
-                if (habitList.isEmpty()) { item { Text("No habits yet. Tap 'New Habit'!", modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(32.dp), textAlign = TextAlign.Center) } }
+                if (habitList.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.no_habbits_added),
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
                 item { Spacer(modifier = Modifier.height(100.dp)) }
             }
         }
     }
     if (showBottomSheet) {
-        ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow, dragHandle = { BottomSheetDefaults.DragHandle() }) {
-            NewHabitSheet(onDismiss = { showBottomSheet = false }, onSave = { name, icon, amount, unit, start -> viewModel.addHabit(name, icon, amount, unit, start); showBottomSheet = false })
+        ModalBottomSheet(
+            onDismissRequest = { showBottomSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            NewHabitSheet(
+                onDismiss = { showBottomSheet = false },
+                onSave = { name, icon, amount, unit, start ->
+                    viewModel.addHabit(name, icon, amount, unit, start)
+                    showBottomSheet = false
+                }
+            )
         }
+    }
+}
+object NetworkModule {
+    // 1. ZenQuotes for Content (English)
+    val quoteApi: QuoteApi = Retrofit.Builder()
+        .baseUrl("https://zenquotes.io/api/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+        .create(QuoteApi::class.java)
+
+    // 2. MyMemory for Translation
+    val translationApi: TranslationApi = Retrofit.Builder()
+        .baseUrl("https://api.mymemory.translated.net/")
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+        .create(TranslationApi::class.java)
+}
+object LocalQuotes {
+    val fallback = listOf(
+        ApiQuote("The only way out is through.", "Robert Frost"),
+        ApiQuote("He who has a why to live can bear almost any how.", "Friedrich Nietzsche"),
+        ApiQuote("Discipline is choosing between what you want now and what you want most.", "Abraham Lincoln"),
+        ApiQuote("We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Aristotle")
+    )
+    val czechFallback = listOf(
+        ApiQuote("Jediná cesta ven je skrz.", "Robert Frost"),
+        ApiQuote("Kdo má PROČ žít, snese téměř každé JAK.", "Friedrich Nietzsche"),
+        ApiQuote("Disciplína je volba mezi tím, co chceš teď, a tím, co chceš nejvíc.", "Abraham Lincoln"),
+        ApiQuote("Jsme tím, co opakovaně děláme. Dokonalost není čin, ale zvyk.", "Aristoteles")
+    )
+}
+
+object QuoteManager {
+    suspend fun getMotivationalQuote(langCode: String): AnimationState<Float, AnimationVector1D> {
+        // 1. Fetch English Quote
+        var quote = try {
+            val response = NetworkModule.quoteApi.getRandomQuotes()
+            if (response.isNotEmpty()) response[0] else LocalQuotes.fallback.random()
+        } catch (e: Exception) {
+            LocalQuotes.fallback.random()
+        }
+
+        // 2. If target is Czech, Attempt Translation
+        if (langCode == "cs") {
+            return try {
+                val translatedText = NetworkModule.translationApi.translate(
+                    text = quote.quote,
+                    langpair = "en|cs"
+                ).responseData.translatedText
+
+                // Return translated text with original author
+                quote.copy(quote = translatedText)
+            } catch (e: Exception) {
+                // Translation failed -> Use Local Czech Fallback to avoid showing English
+                LocalQuotes.czechFallback.random()
+            }
+        }
+        return quote
     }
 }
 
@@ -1235,7 +1395,7 @@ fun HabitCard(
 
                 Row(verticalAlignment = Alignment.Bottom) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(habit.lastEventTitle.uppercase(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                        Text(stringResource(habit.targetLabelRes, habit.goalLabel).uppercase(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
                         Text(
                             text = liveTime,
                             style = MaterialTheme.typography.displaySmall.copy(
@@ -1268,17 +1428,18 @@ fun HabitCard(
                             } else {
                                 Text("${(animatedProgress * 100).toInt()}%", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                             }
-                            Text(habit.targetLabel.replace("Goal: ", ""), fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                            Text(stringResource(habit.targetLabelRes, habit.goalLabel).replace(
+                                stringResource(R.string.goal_doubledot), ""), fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
             }
 
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, offset = DpOffset(x = 200.dp, y = 0.dp), shape = RoundedCornerShape(16.dp)) {
-                DropdownMenuItem(text = { Text("Move Up") }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) }, onClick = { showMenu = false; onMoveUp() })
-                DropdownMenuItem(text = { Text("Move Down") }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) }, onClick = { showMenu = false; onMoveDown() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.move_up)) }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) }, onClick = { showMenu = false; onMoveUp() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.move_down)) }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) }, onClick = { showMenu = false; onMoveDown() })
                 HorizontalDivider()
-                DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false; onDelete() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { showMenu = false; onDelete() })
             }
         }
     }
@@ -1288,11 +1449,19 @@ fun HabitCard(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, Long) -> Unit) {
+
+    val context = LocalContext.current
+
     var name by remember { mutableStateOf("") }
-    var selectedIconName by remember { mutableStateOf("Energy") }
+
+    // Fix: Use context.getString() instead of stringResource()
+    var selectedIconName by remember { mutableStateOf(context.getString(R.string.energy)) }
+
     var showIconStudio by remember { mutableStateOf(false) }
     var goalAmount by remember { mutableStateOf("7") }
-    var selectedUnit by remember { mutableStateOf("Days") }
+
+    // Fix: Use context.getString() here as well
+    var selectedUnit by remember { mutableStateOf(context.getString(R.string.c_days)) }
 
     // DATE & TIME STATE
     var showDatePicker by remember { mutableStateOf(false) }
@@ -1301,8 +1470,15 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
     var tempDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) } // Temp store date before adding time
     var selectedStartTime by remember { mutableLongStateOf(System.currentTimeMillis()) } // Final Result
 
-    val context = LocalContext.current
-    val units = listOf("Seconds", "Minutes", "Hours", "Days", "Weeks", "Months", "Years")
+    val units = listOf(
+        stringResource(R.string.c_seconds),
+        stringResource(R.string.c_minutes),
+        stringResource(R.string.c_hours),
+        stringResource(R.string.c_days),
+        stringResource(R.string.c_weeks),
+        stringResource(R.string.c_months),
+        stringResource(R.string.c_years)
+    )
     val isValid = name.isNotBlank() && goalAmount.toIntOrNull() != null
 
     // 1. DATE PICKER
@@ -1316,9 +1492,9 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
                     tempDateMillis = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
                     showDatePicker = false
                     showTimePicker = true
-                }) { Text("Next") }
+                }) { Text(stringResource(R.string.next)) }
             },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel)) } }
         ) { DatePicker(state = datePickerState) }
     }
 
@@ -1348,7 +1524,8 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
 
                     // Future Check
                     if (finalTime > System.currentTimeMillis()) {
-                        Toast.makeText(context, "Cannot start in the future!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context,
+                            context.getString(R.string.future_pick_error), Toast.LENGTH_SHORT).show()
                         // Reset to Now
                         selectedStartTime = System.currentTimeMillis()
                         isManualDate = false
@@ -1357,12 +1534,12 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
                         isManualDate = true
                     }
                     showTimePicker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.ok)) }
             },
-            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text(stringResource(R.string.cancel)) } },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Select Time", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 16.dp))
+                    Text(stringResource(R.string.select_time), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 16.dp))
                     TimePicker(state = timeState)
                 }
             }
@@ -1374,9 +1551,11 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
             Column(modifier = Modifier.fillMaxSize()) {
                 var searchQuery by remember { mutableStateOf("") }
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text("Icon Library", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(stringResource(R.string.icon_library), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
                     Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search...") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search))
+                    OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(
+                        stringResource(R.string.search)
+                    ) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search))
                     Spacer(modifier = Modifier.height(16.dp))
                 }
                 var tempSelectedIcon by remember { mutableStateOf(selectedIconName) }
@@ -1398,8 +1577,10 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
                         .navigationBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp)) { Box(contentAlignment = Alignment.Center) { Icon(IconMapper.getIcon(tempSelectedIcon), null, tint = MaterialTheme.colorScheme.onPrimary) } }
                         Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) { Text("Selected", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline); Text(tempSelectedIcon, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1) }
-                        Button(onClick = { selectedIconName = tempSelectedIcon; showIconStudio = false }, modifier = Modifier.height(48.dp)) { Text("Confirm") }
+                        Column(modifier = Modifier.weight(1f)) { Text(stringResource(R.string.selected), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline); Text(tempSelectedIcon, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1) }
+                        Button(onClick = { selectedIconName = tempSelectedIcon; showIconStudio = false }, modifier = Modifier.height(48.dp)) { Text(
+                            stringResource(R.string.confirm)
+                        ) }
                     }
                 }
             }
@@ -1411,19 +1592,25 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
         .padding(24.dp)
         .navigationBarsPadding()
         .imePadding()) {
-        Text("New Commitment", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        Text(stringResource(R.string.new_commitment), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
         Spacer(modifier = Modifier.height(24.dp))
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Habit Name") }, placeholder = { Text("e.g. Stop Vaping") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp))
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(
+            stringResource(
+                R.string.habit_name
+            )) }, placeholder = { Text(stringResource(R.string.example_new_habit_temp)) }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp))
         Spacer(modifier = Modifier.height(24.dp))
 
         // DISPLAY DATE + TIME
-        val dateLabel = if (isManualDate) SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(selectedStartTime)) else "Starts Now (When added)"
+        val dateLabel = if (isManualDate) SimpleDateFormat(stringResource(R.string.timeformat), Locale.getDefault()).format(Date(selectedStartTime)) else stringResource(
+            R.string.starts_now
+        )
 
         OutlinedCard(onClick = { showDatePicker = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.DateRange, null); Spacer(modifier = Modifier.width(16.dp)); Column { Text("Start Date", style = MaterialTheme.typography.labelSmall); Text(dateLabel, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) } }
+            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.DateRange, null); Spacer(modifier = Modifier.width(16.dp)); Column { Text(
+                stringResource(R.string.start_date), style = MaterialTheme.typography.labelSmall); Text(dateLabel, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) } }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Icon", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.outline)
+        Text(stringResource(R.string.icon), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.outline)
         Spacer(modifier = Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(items = IconMapper.quickIcons) { iconKey ->
@@ -1435,10 +1622,11 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
                         .graphicsLayer { scaleX = animScale; scaleY = animScale }) { Box(contentAlignment = Alignment.Center) { Icon(IconMapper.getIcon(iconKey), null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) } }
                 }
             }
-            item { Surface(onClick = { showIconStudio = true }, shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(52.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreHoriz, "All", tint = MaterialTheme.colorScheme.onSecondaryContainer) } } }
+            item { Surface(onClick = { showIconStudio = true }, shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(52.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreHoriz,
+                stringResource(R.string.all), tint = MaterialTheme.colorScheme.onSecondaryContainer) } } }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Goal Duration", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.outline)
+        Text(stringResource(R.string.goal_duration), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.outline)
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(value = goalAmount, onValueChange = { if (it.all { char -> char.isDigit() }) goalAmount = it }, modifier = Modifier.weight(0.4f), shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -1449,13 +1637,24 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
         Spacer(modifier = Modifier.height(32.dp))
         Button(onClick = { val amount = goalAmount.toIntOrNull() ?: 7; val finalStart = if (isManualDate) selectedStartTime else System.currentTimeMillis(); onSave(name, selectedIconName, amount, selectedUnit, finalStart) }, enabled = isValid, modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp), shape = RoundedCornerShape(12.dp)) { Text("Commit") }
+            .height(50.dp), shape = RoundedCornerShape(12.dp)) { Text(stringResource(R.string.commit)) }
     }
 }
 
-// NETWORK
-data class ApiQuote(val quote: String, val author: String)
-interface QuoteApi { @GET("quotes/random") suspend fun getRandomQuote(): ApiQuote }
-object NetworkModule {
-    val api: QuoteApi = Retrofit.Builder().baseUrl("https://dummyjson.com/").addConverterFactory(GsonConverterFactory.create()).build().create(QuoteApi::class.java)
+data class ApiQuote(
+    @SerializedName("q") val quote: String,
+    @SerializedName("a") val author: String
+)
+
+data class TranslationResponse(val responseData: ResponseData)
+data class ResponseData(val translatedText: String)
+
+interface QuoteApi {
+    @GET("random") // ZenQuotes: https://zenquotes.io/api/random
+    suspend fun getRandomQuotes(): List<ApiQuote>
+}
+
+interface TranslationApi {
+    @GET("get") // MyMemory: https://api.mymemory.translated.net/get?q=...&langpair=en|cs
+    suspend fun translate(@Query("q") text: String, @Query("langpair") langpair: String): TranslationResponse
 }

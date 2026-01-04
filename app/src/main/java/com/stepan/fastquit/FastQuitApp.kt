@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit
 class FastQuitApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        IconMapper.init(this)
         setupWorker()
     }
 

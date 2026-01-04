@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,7 +31,7 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
     val settingsViewModel: SettingsViewModel = viewModel()
 
     var hasStarted by remember { mutableStateOf(false) }
-    var currentStepText by remember { mutableStateOf("Initializing...") }
+    var currentStepText by remember { mutableStateOf(context.getString(R.string.initializing)) }
     var isFinished by remember { mutableStateOf(false) }
 
     // This is the single source of truth for the smooth line
@@ -49,14 +50,14 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
 
         // Parallel Task: Habit DB Migration
         // Mentioning Habit DB Version
-        currentStepText = "Optimizing Habit Database (v$HABIT_DB_VERSION)..."
+        currentStepText = context.getString(R.string.optimizing_habit_database, HABIT_DB_VERSION)
         val habitDb = AppDatabase.getDatabase(context)
         habitDb.habitDao().getHabitById(-1)
         delay(1200)
 
         // Parallel Task: Settings Sync
         // Mentioning Settings DB Version
-        currentStepText = "Syncing Settings Database (v$SETTINGS_DB_VERSION)..."
+        currentStepText = context.getString(R.string.syncing_settings_database, SETTINGS_DB_VERSION)
         val settingsDb = SettingsDatabase.getDatabase(context)
         settingsDb.settingsDao().setSettingsVersion(
             SettingsVersionInfo(versionCode = SETTINGS_DB_VERSION)
@@ -65,7 +66,11 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
 
         // Parallel Task: Version Finalization
         // Mentioning Both
-        currentStepText = "Finalizing Storage (v$HABIT_DB_VERSION) & Preferences (v$SETTINGS_DB_VERSION)..."
+        currentStepText = context.getString(
+            R.string.finalizing_storage_preferences,
+            HABIT_DB_VERSION,
+            SETTINGS_DB_VERSION
+        )
         habitDb.habitDao().setDbVersion(DbVersionInfo(versionCode = HABIT_DB_VERSION))
 
         // Wait for the smooth line to actually finish its journey
@@ -76,7 +81,10 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
 
     Scaffold(containerColor = MaterialTheme.colorScheme.surface) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(32.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -105,7 +113,7 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
             Spacer(modifier = Modifier.height(40.dp))
 
             Text(
-                text = if (isFinished) "System Ready" else "Core Update",
+                text = if (isFinished) stringResource(R.string.system_ready) else stringResource(R.string.core_update),
                 style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Black)
             )
 
@@ -114,7 +122,7 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
             // Smoothly transitioning status text using AnimatedContent
             Box(modifier = Modifier.height(72.dp), contentAlignment = Alignment.TopCenter) {
                 AnimatedContent(
-                    targetState = if (!hasStarted) "A mandatory system update is required to continue." else currentStepText,
+                    targetState = if (!hasStarted) stringResource(R.string.update_required_header) else currentStepText,
                     transitionSpec = {
                         (fadeIn() + slideInVertically { it / 2 }) togetherWith (fadeOut() + slideOutVertically { -it / 2 })
                     },
@@ -134,17 +142,21 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
             if (!hasStarted) {
                 Button(
                     onClick = { hasStarted = true },
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(72.dp),
                     shape = RoundedCornerShape(24.dp)
                 ) {
-                    Text("BEGIN MIGRATION", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Text(stringResource(R.string.begin_migration), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                 }
             } else if (!isFinished) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     // THE SMOOTH LINE: Thicker, Wavier, and Continuous
                     LinearWavyProgressIndicator(
                         progress = { progressAnimatable.value },
-                        modifier = Modifier.fillMaxWidth().height(24.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                         stroke = Stroke(width = 30f, cap = StrokeCap.Round), // Extra bold
@@ -167,11 +179,13 @@ fun DatabaseUpdateScreen(onUpdateComplete: () -> Unit) {
                         settingsViewModel.update { it.copy(forceUpdateScreen = false) }
                         onUpdateComplete()
                     },
-                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(72.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
                 ) {
-                    Text("ENTER FASTQUIT", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                    Text(stringResource(R.string.enter_fastquit), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                 }
             }
         }

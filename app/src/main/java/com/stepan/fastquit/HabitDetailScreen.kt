@@ -1,5 +1,6 @@
 package com.stepan.fastquit
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -106,7 +108,12 @@ fun HabitDetailScreen(
     val pullState = rememberPullToRefreshState()
 
     // PAGER STATE
-    val tabs = listOf("Overview", "Statistics", "History", "Achievements")
+    val tabs = listOf(
+        stringResource(R.string.overview),
+        stringResource(R.string.statistics),
+        stringResource(R.string.history),
+        stringResource(R.string.achievements)
+    )
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
 
@@ -116,8 +123,8 @@ fun HabitDetailScreen(
             Column {
                 TopAppBar(
                     title = { Text(habitEntity?.name ?: habitName, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
-                    navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                    actions = { IconButton(onClick = { }) { Icon(Icons.Default.Share, "Share") } }
+                    navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack,stringResource(R.string.back)) } },
+                    actions = { IconButton(onClick = { }) { Icon(Icons.Default.Share, stringResource(R.string.share)) } }
                 )
 
                 ScrollableTabRow(
@@ -162,7 +169,9 @@ fun HabitDetailScreen(
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ isRefreshing = false }, 800)
             },
             state = pullState,
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
             indicator = { PullToRefreshDefaults.LoadingIndicator(state = pullState, isRefreshing = isRefreshing, modifier = Modifier.align(Alignment.TopCenter)) }
         ) {
             HorizontalPager(
@@ -230,7 +239,7 @@ fun ResetBottomSheet(
 
                 Column {
                     Text(
-                        "Reset Habit",
+                        stringResource(R.string.reset_habit),
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
@@ -254,7 +263,7 @@ fun ResetBottomSheet(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        "Current Streak",
+                        stringResource(R.string.current_streak),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -290,7 +299,7 @@ fun ResetBottomSheet(
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Text(
-                        "Resetting will clear your current progress and start a new streak. Previous data will be saved in history.",
+                        stringResource(R.string.reset_string),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f)
@@ -323,7 +332,7 @@ fun ResetBottomSheet(
                     ) {
                         Icon(Icons.Rounded.RestartAlt, null)
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Reset Progress", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.reset_progress), fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -333,7 +342,7 @@ fun ResetBottomSheet(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Cancel", fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.cancel), fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -391,7 +400,7 @@ fun GoalResetChoiceSheet(
 
                 Column {
                     Text(
-                        "New milestone",
+                        stringResource(R.string.new_milestone),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -418,7 +427,7 @@ fun GoalResetChoiceSheet(
                 ) {
                     Column {
                         Text(
-                            "Current streak",
+                            stringResource(R.string.current_streak),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                         )
@@ -454,7 +463,7 @@ fun GoalResetChoiceSheet(
 
             // Section title
             Text(
-                "Continue your journey",
+                stringResource(R.string.continue_your_journey),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 modifier = Modifier.fillMaxWidth()
             )
@@ -462,7 +471,7 @@ fun GoalResetChoiceSheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                "Select how you'd like to track your next goal",
+                stringResource(R.string.goal_track_string),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth()
@@ -507,12 +516,12 @@ fun GoalResetChoiceSheet(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Continue streak ",
+                            stringResource(R.string.continue_streak_space),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Keep current streak going",
+                            stringResource(R.string.keep_current_streak_going),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -574,12 +583,12 @@ fun GoalResetChoiceSheet(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Fresh start",
+                            stringResource(R.string.fresh_start),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Begin new goal from today",
+                            stringResource(R.string.begin_new_goal_from_today),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -619,7 +628,7 @@ fun GoalResetChoiceSheet(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    "Continue streak shows your overall progress. Fresh start helps track specific goal periods.",
+                    stringResource(R.string.streak_continue_types),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.weight(1f)
@@ -641,7 +650,7 @@ fun GoalResetChoiceSheet(
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    Text("Cancel", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
+                    Text(stringResource(R.string.cancel), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium))
                 }
 
                 // Confirm button
@@ -663,7 +672,7 @@ fun GoalResetChoiceSheet(
                         disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 ) {
-                    Text("Continue", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(stringResource(R.string.continue_str), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 }
             }
         }
@@ -672,12 +681,13 @@ fun GoalResetChoiceSheet(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel) {
+    val context = LocalContext.current
     val settingsViewModel: SettingsViewModel = viewModel()
     val prefs by settingsViewModel.preferences.collectAsState()
     val view = androidx.compose.ui.platform.LocalView.current
     val start = habitEntity?.lastResetTime ?: now
     val targetSeconds = habitEntity?.targetSeconds ?: 604800L
-    val goalLabel = habitEntity?.goalLabel ?: "7 Days"
+    val goalLabel = habitEntity?.goalLabel ?: stringResource(R.string._7_days)
     val diffSeconds = (now - start) / 1000
     val safeGoal = if (targetSeconds == 0L) 1L else targetSeconds
     val rawProgress = (diffSeconds.toFloat() / safeGoal.toFloat()).coerceIn(0f, 1f)
@@ -685,7 +695,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     val animatedProgress by animateFloatAsState(
         targetValue = rawProgress,
         animationSpec = tween(1000, easing = LinearEasing),
-        label = "Progress"
+        label = stringResource(R.string.progress)
     )
 
     // Reset Dialog State
@@ -701,10 +711,10 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     }
 
     val (displayCount, displayUnit) = when {
-        diffSeconds < 60 -> diffSeconds to "SECONDS"
-        diffSeconds < 3600 -> TimeUnit.SECONDS.toMinutes(diffSeconds) to "MINUTES"
-        diffSeconds < 86400 -> TimeUnit.SECONDS.toHours(diffSeconds) to "HOURS"
-        else -> TimeUnit.SECONDS.toDays(diffSeconds) to "DAYS"
+        diffSeconds < 60 -> diffSeconds to stringResource(R.string.seconds)
+        diffSeconds < 3600 -> TimeUnit.SECONDS.toMinutes(diffSeconds) to stringResource(R.string.minutes)
+        diffSeconds < 86400 -> TimeUnit.SECONDS.toHours(diffSeconds) to stringResource(R.string.hours)
+        else -> TimeUnit.SECONDS.toDays(diffSeconds) to stringResource(R.string.days)
     }
 
     // -- DIALOG & SHEET STATE --
@@ -719,7 +729,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
 
     if (showResetConfirmation) {
         GoalResetChoiceSheet(
-            habitName = habitEntity?.name ?: "Habit",
+            habitName = habitEntity?.name ?: stringResource(R.string.habit),
             currentStreak = formatDurationFriendly(diffSeconds),
             onDismiss = { showResetConfirmation = false },
             onResetTimer = {
@@ -746,15 +756,15 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             ExtendGoalSheetContent(
-                title = "Target Reached",
-                subtitle = "Select your next milestone to keep the streak alive.",
+                title = stringResource(R.string.target_reached),
+                subtitle = stringResource(R.string.milestone_next),
                 icon = Icons.Rounded.EmojiEvents,
                 iconColor = SuccessGreen,
                 onDismiss = { showExtendSheet = false },
                 onConfirm = { amount, unit ->
                     pendingAmount = amount
                     pendingUnit = unit
-                    pendingAction = "EXTEND"
+                    pendingAction = context.getString(R.string.milestone_next)
                     showExtendSheet = false
                     showResetConfirmation = true
                 }
@@ -769,8 +779,8 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             dragHandle = { BottomSheetDefaults.DragHandle() }
         ) {
             ExtendGoalSheetContent(
-                title = "Edit Target",
-                subtitle = "Change your current goal duration.",
+                title = stringResource(R.string.edit_target),
+                subtitle = stringResource(R.string.goal_dest),
                 icon = Icons.Rounded.Edit,
                 iconColor = MaterialTheme.colorScheme.primary,
                 onDismiss = { showEditTargetSheet = false },
@@ -787,7 +797,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
 
     if (showResetDialog) {
         ResetBottomSheet(
-            habitName = habitEntity?.name ?: "Habit",
+            habitName = habitEntity?.name ?: stringResource(R.string.habit),
             currentStreak = formatDurationFriendly(diffSeconds),
             onDismiss = { showResetDialog = false },
             onConfirm = {
@@ -807,7 +817,9 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
     ) {
         // 1. MAIN PROGRESS CARD
         Card(
-            modifier = Modifier.fillMaxWidth().height(360.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(360.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             shape = RoundedCornerShape(32.dp)
         ) {
@@ -823,10 +835,10 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
                     amplitude = { 1.0f },
                     wavelength = 120.dp,
                     stroke = Stroke(width = with(density) { 20.dp.toPx() }, cap = StrokeCap.Round),
-                    trackStroke = Stroke(width = with(density) { 20.dp.toPx() })
+                    trackStroke = Stroke(width = with(density) { 20.dp.toPx() }, cap = StrokeCap.Round)
                 )
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("STREAK", style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.streak), style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 2.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("$displayCount", style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Black, fontSize = 80.sp), color = MaterialTheme.colorScheme.onSurface)
                     Text(displayUnit, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = waveColor)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -837,7 +849,7 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
                         shape = RoundedCornerShape(50)
                     ) {
                         Text(
-                            "GOAL: ${goalLabel.uppercase()}",
+                            stringResource(R.string.goal, goalLabel.uppercase()),
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -856,17 +868,19 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
             shape = RoundedCornerShape(24.dp)
         ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 val hours = (diffSeconds % 86400) / 3600; val minutes = (diffSeconds % 3600) / 60; val seconds = diffSeconds % 60
-                TimeTickerUnit(value = hours, label = "HOURS"); Text(":", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.outline))
-                TimeTickerUnit(value = minutes, label = "MINS"); Text(":", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.outline))
-                TimeTickerUnit(value = seconds, label = "SECS", highlight = true)
+                TimeTickerUnit(value = hours, label = stringResource(R.string.hours)); Text(":", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.outline))
+                TimeTickerUnit(value = minutes, label = stringResource(R.string.mins)); Text(":", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.outline))
+                TimeTickerUnit(value = seconds, label = stringResource(R.string.secs), highlight = true)
             }
         }
 
         // 4. CONSISTENCY / CALENDAR
         Column {
-            Text("Consistency", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
+            Text(stringResource(R.string.consistency), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), modifier = Modifier.padding(bottom = 16.dp))
             CalendarCard(habitStartDate = start, targetSeconds = targetSeconds)
         }
 
@@ -877,38 +891,44 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
             Button(
                 onClick = { showExtendSheet = true },
                 colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Color.Black),
-                modifier = Modifier.fillMaxWidth().height(72.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
                 shape = RoundedCornerShape(20.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
             ) {
                 Icon(Icons.Rounded.FastForward, null)
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(horizontalAlignment = Alignment.Start) {
-                    Text("CONTINUE JOURNEY", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
-                    Text("Goal Reached. Set Next Target", style = MaterialTheme.typography.labelSmall)
+                    Text(stringResource(R.string.continue_journey), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
+                    Text(stringResource(R.string.reach_target), style = MaterialTheme.typography.labelSmall)
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = { showResetDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(Icons.Rounded.RestartAlt, null)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Reset Progress", fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.reset_progress), fontWeight = FontWeight.Bold)
             }
         } else {
             Button(
                 onClick = { showResetDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
-                modifier = Modifier.fillMaxWidth().height(72.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Icon(Icons.Rounded.Warning, null)
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("RESET TIMER", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text(stringResource(R.string.reset_timer), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
             }
         }
 
@@ -918,12 +938,33 @@ fun OverviewTab(habitEntity: HabitEntity?, now: Long, viewModel: DetailViewModel
 
 @Composable
 fun MotivationalCarousel(progress: Float) {
+    val context = LocalContext.current
     val phrases = remember(progress) {
         when {
-            progress >= 1f -> listOf("Goal Achieved!", "Absolute Legend", "Milestone Reached", "New Peak Unlocked")
-            progress >= 0.8f -> listOf("Almost there!", "The final stretch", "Don't stop now", "Finish strong!")
-            progress >= 0.5f -> listOf("Halfway point!", "Urge defeated", "Momentum building", "Keep it up")
-            else -> listOf("Keep going!", "One day at a time", "Building habit", "Stay focused")
+            progress >= 1f -> listOf(
+                context.getString(R.string.motivate_goal_achieved),
+                context.getString(R.string.motivate_absolute_legend),
+                context.getString(R.string.motivate_milestone_reached),
+                context.getString(R.string.motivate_new_peak_unlocked)
+            )
+            progress >= 0.8f -> listOf(
+                context.getString(R.string.motivate_almost_there),
+                context.getString(R.string.motivate_the_final_stretch),
+                context.getString(R.string.motivate_don_t_stop_now),
+                context.getString(R.string.motivate_finish_strong)
+            )
+            progress >= 0.5f -> listOf(
+                context.getString(R.string.motivate_halfway_point),
+                context.getString(R.string.motivate_urge_defeated),
+                context.getString(R.string.motivate_momentum_building),
+                context.getString(R.string.motivate_keep_it_up)
+            )
+            else -> listOf(
+                context.getString(R.string.motivate_keep_going),
+                context.getString(R.string.motivate_one_day_at_a_time),
+                context.getString(R.string.motivate_building_habit),
+                context.getString(R.string.motivate_stay_focused)
+            )
         }
     }
 
@@ -937,7 +978,9 @@ fun MotivationalCarousel(progress: Float) {
     }
 
     Box(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         AnimatedContent(
@@ -946,7 +989,7 @@ fun MotivationalCarousel(progress: Float) {
                 (slideInVertically(animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy)) { it } + fadeIn())
                     .togetherWith(slideOutVertically { -it } + fadeOut())
             },
-            label = "MotivationalText"
+            label = stringResource(R.string.motivationaltext)
         ) { text ->
             Text(
                 text = text.uppercase(),
@@ -969,11 +1012,23 @@ fun ExtendGoalSheetContent(
     onDismiss: () -> Unit,
     onConfirm: (Int, String) -> Unit
 ) {
+    val context = LocalContext.current
     var amount by remember { mutableStateOf("") }
-    var selectedUnit by remember { mutableStateOf("Days") }
-    val units = listOf("Seconds", "Minutes", "Hours", "Days", "Weeks", "Months", "Years")
+    var selectedUnit by remember { mutableStateOf(context.getString(R.string.c_days)) }
+    val units = listOf(
+        stringResource(R.string.c_seconds),
+        stringResource(R.string.c_minutes),
+        stringResource(R.string.c_hours),
+        stringResource(R.string.c_days),
+        stringResource(R.string.c_weeks),
+        stringResource(R.string.c_months),
+        stringResource(R.string.c_years)
+    )
 
-    Column(modifier = Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding()) {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .padding(24.dp)
+        .navigationBarsPadding()) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Surface(shape = CircleShape, color = iconColor.copy(alpha = 0.2f), modifier = Modifier.size(80.dp)) {
                 Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = iconColor, modifier = Modifier.size(40.dp)) }
@@ -988,8 +1043,8 @@ fun ExtendGoalSheetContent(
         OutlinedTextField(
             value = amount,
             onValueChange = { if (it.all { char -> char.isDigit() }) amount = it },
-            label = { Text("Amount") },
-            placeholder = { Text("e.g. 14") },
+            label = { Text(stringResource(R.string.amount)) },
+            placeholder = { Text(stringResource(R.string.e_g_14)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -1009,10 +1064,12 @@ fun ExtendGoalSheetContent(
                 if (amt != null && amt > 0) onConfirm(amt, selectedUnit)
             },
             enabled = amount.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Set Goal")
+            Text(stringResource(R.string.set_goal))
         }
     }
 }
@@ -1028,15 +1085,17 @@ fun StatisticsTab(habitEntity: HabitEntity?, history: List<ResetHistoryEntity>, 
     val targetChanges = habitEntity?.targetChangesCount ?: 0
 
     val stats = listOf(
-        "Goals Completed" to "$goalsCompleted",
-        "Target Changes" to "$targetChanges",
-        "Max Streak" to formatDurationFriendly(maxStreak),
-        "Avg Streak" to formatDurationFriendly(avgStreak),
-        "Min Streak" to formatDurationFriendly(minStreak),
-        "Total Resets" to "$totalResets"
+        stringResource(R.string.goals_completed) to "$goalsCompleted",
+        stringResource(R.string.target_changes) to "$targetChanges",
+        stringResource(R.string.max_streak) to formatDurationFriendly(maxStreak),
+        stringResource(R.string.avg_streak) to formatDurationFriendly(avgStreak),
+        stringResource(R.string.min_streak) to formatDurationFriendly(minStreak),
+        stringResource(R.string.total_resets) to "$totalResets"
     )
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .padding(16.dp)) {
         LazyVerticalGrid(columns = GridCells.Fixed(2), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(stats) { (label, value) ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer), shape = RoundedCornerShape(24.dp)) {
@@ -1054,21 +1113,24 @@ fun StatisticsTab(habitEntity: HabitEntity?, history: List<ResetHistoryEntity>, 
 @Composable
 fun HistoryTab(history: List<ResetHistoryEntity>) {
     if (history.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No resets yet. Keep going!", color = MaterialTheme.colorScheme.outline) }
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(
+            stringResource(R.string.no_resets), color = MaterialTheme.colorScheme.outline) }
     } else {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(history) { entry ->
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = RoundedCornerShape(16.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.size(40.dp)) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) } }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
-                            Text("Reset", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                            Text(SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).format(Date(entry.endDate)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text(stringResource(R.string.reset), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+                            Text(SimpleDateFormat(stringResource(R.string.timeformat), Locale.getDefault()).format(Date(entry.endDate)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                         }
                         Spacer(modifier = Modifier.weight(1f))
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Lasted", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Text(stringResource(R.string.lasted), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             Text(formatDurationFriendly(entry.durationSeconds), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                         }
                     }
@@ -1081,25 +1143,26 @@ fun HistoryTab(history: List<ResetHistoryEntity>) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AchievementsTab(currentSeconds: Long, completions: Int) {
+    val context = LocalContext.current
     data class MilestoneUI(val label: String, val target: Long, val icon: ImageVector, val type: String)
 
     val timeMilestones = listOf(
-        MilestoneUI("Beginner", 0, Icons.Rounded.Start, "TIME"),
-        MilestoneUI("24 Hours", 86400, Icons.Rounded.LooksOne, "TIME"),
-        MilestoneUI("3 Days", 259200, Icons.Rounded.Looks3, "TIME"),
-        MilestoneUI("1 Week", 604800, Icons.Rounded.CalendarViewWeek, "TIME"),
-        MilestoneUI("1 Month", 2592000, Icons.Rounded.CalendarMonth, "TIME"),
-        MilestoneUI("3 Months", 7776000, Icons.Rounded.Filter3, "TIME"),
-        MilestoneUI("6 Months", 15552000, Icons.Rounded.Filter6, "TIME"),
-        MilestoneUI("1 Year", 31536000, Icons.Rounded.Cake, "TIME")
+        MilestoneUI(stringResource(R.string.beginner), 0, Icons.Rounded.Start, "TIME"),
+        MilestoneUI(stringResource(R.string._24_hours), 86400, Icons.Rounded.LooksOne, "TIME"),
+        MilestoneUI(stringResource(R.string._3_days), 259200, Icons.Rounded.Looks3, "TIME"),
+        MilestoneUI(stringResource(R.string._1_week), 604800, Icons.Rounded.CalendarViewWeek, "TIME"),
+        MilestoneUI(stringResource(R.string._1_month), 2592000, Icons.Rounded.CalendarMonth, "TIME"),
+        MilestoneUI(stringResource(R.string._3_months), 7776000, Icons.Rounded.Filter3, "TIME"),
+        MilestoneUI(stringResource(R.string._6_months), 15552000, Icons.Rounded.Filter6, "TIME"),
+        MilestoneUI(stringResource(R.string._1_year), 31536000, Icons.Rounded.Cake, "TIME")
     )
 
     val completionMilestones = listOf(
-        MilestoneUI("Goal Crusher I", 1, Icons.Rounded.WorkspacePremium, "GOAL"),
-        MilestoneUI("Goal Crusher II", 3, Icons.Rounded.WorkspacePremium, "GOAL"),
-        MilestoneUI("Goal Crusher III", 5, Icons.Rounded.WorkspacePremium, "GOAL"),
-        MilestoneUI("Elite", 10, Icons.Rounded.Diamond, "GOAL"),
-        MilestoneUI("Master", 25, Icons.Rounded.MilitaryTech, "GOAL")
+        MilestoneUI(stringResource(R.string.goal_crusher_i), 1, Icons.Rounded.WorkspacePremium, "GOAL"),
+        MilestoneUI(stringResource(R.string.goal_crusher_ii), 3, Icons.Rounded.WorkspacePremium, "GOAL"),
+        MilestoneUI(stringResource(R.string.goal_crusher_iii), 5, Icons.Rounded.WorkspacePremium, "GOAL"),
+        MilestoneUI(stringResource(R.string.elite), 10, Icons.Rounded.Diamond, "GOAL"),
+        MilestoneUI(stringResource(R.string.master), 25, Icons.Rounded.MilitaryTech, "GOAL")
     )
 
     val allMilestones = (timeMilestones + completionMilestones)
@@ -1123,15 +1186,15 @@ fun AchievementsTab(currentSeconds: Long, completions: Int) {
             }
 
             val visualProgress = if (isCurrentTarget) rawProgress.coerceAtLeast(0.05f) else rawProgress
-            val animatedProgress by animateFloatAsState(visualProgress, label = "Achv")
+            val animatedProgress by animateFloatAsState(visualProgress, label = "")
 
-            val statusText = if (isUnlocked) "Unlocked!" else {
+            val statusText = if (isUnlocked) context.getString(R.string.unlocked) else {
                 if (isGoalType) {
-                    "${completions}/${m.target} Goals Met"
+                    context.getString(R.string.goals_met, completions, m.target)
                 } else {
                     val remainingSeconds = m.target - currentSeconds
                     val futureMillis = System.currentTimeMillis() + (remainingSeconds * 1000)
-                    "Unlocks: " + SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()).format(Date(futureMillis))
+                    context.getString(R.string.unlocks) + SimpleDateFormat(context.getString(R.string.mmm_dd_hh_mm), Locale.getDefault()).format(Date(futureMillis))
                 }
             }
 
@@ -1162,7 +1225,9 @@ fun AchievementsTab(currentSeconds: Long, completions: Int) {
                             if (isCurrentTarget && !isGoalType) {
                                 LinearWavyProgressIndicator(
                                     progress = { animatedProgress },
-                                    modifier = Modifier.fillMaxWidth().height(14.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(14.dp),
                                     color = MaterialTheme.colorScheme.primary,
                                     trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                     amplitude = { 0.2f },
@@ -1172,7 +1237,9 @@ fun AchievementsTab(currentSeconds: Long, completions: Int) {
                             } else {
                                 LinearProgressIndicator(
                                     progress = { animatedProgress },
-                                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp),
                                     strokeCap = StrokeCap.Round,
                                     trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                                 )
@@ -1201,10 +1268,13 @@ fun formatDurationFriendly(seconds: Long): String {
     }
 }
 
+@SuppressLint("DefaultLocale")
 @Composable
 fun TimeTickerUnit(value: Long, label: String, highlight: Boolean = false) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(shape = RoundedCornerShape(16.dp), color = if (highlight) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.width(80.dp).height(80.dp)) {
+        Surface(shape = RoundedCornerShape(16.dp), color = if (highlight) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier
+            .width(80.dp)
+            .height(80.dp)) {
             Box(contentAlignment = Alignment.Center) {
                 AnimatedContent(targetState = value, transitionSpec = { slideInVertically { it } + fadeIn() togetherWith slideOutVertically { -it } + fadeOut() }, label = "Timer") { targetCount ->
                     Text(text = String.format("%02d", targetCount), style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold), color = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
@@ -1232,12 +1302,22 @@ fun CalendarCard(habitStartDate: Long, targetSeconds: Long) {
 
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = RoundedCornerShape(24.dp)) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { currentYearMonth = currentYearMonth.minusMonths(1) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Prev") }
                 Text("$monthName $year", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 IconButton(onClick = { currentYearMonth = currentYearMonth.plusMonths(1) }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, "Next") }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { listOf("M", "T", "W", "T", "F", "S", "S").forEach { day -> Text(text = day, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline) } }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { listOf(
+                stringResource(R.string.monday),
+                stringResource(R.string.tuesday),
+                stringResource(R.string.wednesday),
+                stringResource(R.string.thursday),
+                stringResource(R.string.friday),
+                stringResource(R.string.saturday),
+                stringResource(R.string.sunday)
+            ).forEach { day -> Text(text = day, modifier = Modifier.width(32.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.outline) } }
             Spacer(modifier = Modifier.height(12.dp))
             val weeks = calendarGrid.chunked(7)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1249,7 +1329,21 @@ fun CalendarCard(habitStartDate: Long, targetSeconds: Long) {
                                 val date = currentYearMonth.atDay(dayNum)
                                 val isToday = date.isEqual(today); val isStart = date.isEqual(startDate); val isGoal = date.isEqual(goalDate)
                                 val isBetweenStartAndNow = date.isAfter(startDate) && (date.isBefore(today) || date.isEqual(today))
-                                Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(when { isStart -> MaterialTheme.colorScheme.primary; isGoal -> MaterialTheme.colorScheme.tertiary; isBetweenStartAndNow -> MaterialTheme.colorScheme.primaryContainer; else -> Color.Transparent }).then(if(isToday) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier), contentAlignment = Alignment.Center) {
+                                Box(modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            isStart -> MaterialTheme.colorScheme.primary; isGoal -> MaterialTheme.colorScheme.tertiary; isBetweenStartAndNow -> MaterialTheme.colorScheme.primaryContainer; else -> Color.Transparent
+                                        }
+                                    )
+                                    .then(
+                                        if (isToday) Modifier.border(
+                                            2.dp,
+                                            MaterialTheme.colorScheme.onSurface,
+                                            CircleShape
+                                        ) else Modifier
+                                    ), contentAlignment = Alignment.Center) {
                                     if (isGoal) Icon(Icons.Default.Flag, null, tint = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(16.dp)) else Text(text = dayNum.toString(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (isToday || isStart) FontWeight.Bold else FontWeight.Normal), color = when { isStart -> MaterialTheme.colorScheme.onPrimary; isGoal -> MaterialTheme.colorScheme.onTertiary; isBetweenStartAndNow -> MaterialTheme.colorScheme.onPrimaryContainer; else -> MaterialTheme.colorScheme.onSurface })
                                 }
                             }
