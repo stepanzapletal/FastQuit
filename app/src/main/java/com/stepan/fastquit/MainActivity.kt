@@ -735,12 +735,13 @@ fun BackupSettings() {
 @Composable
 fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
     val context = LocalContext.current
-    val view = LocalView.current
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var showNukeSheet by remember { mutableStateOf(false) }
+    val view = androidx.compose.ui.platform.LocalView.current
     val prefs by settingsViewModel.preferences.collectAsState()
 
-    // Version states
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showNukeSheet by remember { mutableStateOf(false) }
+
+    // Version states restoration
     var habitDbStoredVersion by remember { mutableIntStateOf(0) }
     var settingsDbStoredVersion by remember { mutableIntStateOf(0) }
     var isLoadingVersions by remember { mutableStateOf(true) }
@@ -756,30 +757,22 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
         }
     }
 
-    // Load versions in a separate LaunchedEffect
+    // Load versions logic restored
     LaunchedEffect(Unit) {
         isLoadingVersions = true
         withContext(Dispatchers.IO) {
             try {
-                // Load habits DB version
                 val habitDb = AppDatabase.getDatabase(context)
-                val habitVersion = habitDb.habitDao().getDbVersion()
-                habitDbStoredVersion = habitVersion?.versionCode ?: 0
+                habitDbStoredVersion = habitDb.habitDao().getDbVersion()?.versionCode ?: 0
 
-                // Load settings DB version
                 val settingsDb = SettingsDatabase.getDatabase(context)
-                val settingsVersion = settingsDb.settingsDao().getSettingsVersion()
-                settingsDbStoredVersion = settingsVersion?.versionCode ?: 0
+                settingsDbStoredVersion = settingsDb.settingsDao().getSettingsVersion()?.versionCode ?: 0
 
-                // Check if update is needed
                 val needsHabitUpdate = AppDatabase.needsUpdate(context)
                 val needsSettingsUpdate = SettingsDatabase.needsUpdate(context)
                 needsDatabaseUpdate = needsHabitUpdate || needsSettingsUpdate
             } catch (e: Exception) {
                 e.printStackTrace()
-                habitDbStoredVersion = 0
-                settingsDbStoredVersion = 0
-                needsDatabaseUpdate = null
             } finally {
                 isLoadingVersions = false
             }
@@ -794,10 +787,7 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
             shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
-                    .navigationBarsPadding(),
+                modifier = Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), modifier = Modifier.size(80.dp)) {
@@ -810,13 +800,11 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
                 Button(
                     onClick = {
-                        HapticHelper.warning(view, prefs)
+                        HapticHelper.warning(view, prefs) // Fixed Signature
                         context.deleteDatabase("fastquit_db")
-                        Process.killProcess(Process.myPid())
+                        android.os.Process.killProcess(android.os.Process.myPid())
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp),
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -827,13 +815,11 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        HapticHelper.warning(view, prefs)
+                        HapticHelper.warning(view, prefs) // Fixed Signature
                         context.deleteDatabase("settings_db")
-                        Process.killProcess(Process.myPid())
+                        android.os.Process.killProcess(android.os.Process.myPid())
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp),
+                    modifier = Modifier.fillMaxWidth().height(64.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
@@ -845,115 +831,50 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
         }
     }
 
-    // Database Update Screen should be called at the root level, not inside a conditional in a composable
     if (showUpdateScreen) {
         DatabaseUpdateScreen(
             onUpdateComplete = {
                 showUpdateScreen = false
-                // Refresh versions after update
-                LaunchedEffect(Unit) {
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val habitDb = AppDatabase.getDatabase(context)
-                            val habitVersion = habitDb.habitDao().getDbVersion()
-                            habitDbStoredVersion = habitVersion?.versionCode ?: 0
-
-                            val settingsDb = SettingsDatabase.getDatabase(context)
-                            val settingsVersion = settingsDb.settingsDao().getSettingsVersion()
-                            settingsDbStoredVersion = settingsVersion?.versionCode ?: 0
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
             }
         )
-        // Return early - don't render the rest when showing update screen
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         ExpressiveSection("Build Info") {
             ExpressiveItem("App Version", "1.0.0 (Alpha)", Icons.Rounded.Android) {}
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 56.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            )
+            ExpressiveItem(
+                title = "Habits DB",
+                subtitle = if (isLoadingVersions) "Loading..." else "Schema: v$HABIT_DB_VERSION • Stored: v$habitDbStoredVersion",
+                icon = Icons.Rounded.Storage
+            ) {}
 
-            // Show both schema and stored version for habits
-            if (isLoadingVersions) {
-                ExpressiveItem(
-                    title = "Habits DB",
-                    subtitle = "Loading...",
-                    icon = Icons.Rounded.Storage
-                ) {}
-            } else {
-                ExpressiveItem(
-                    title = "Habits DB",
-                    subtitle = "Schema: v$HABIT_DB_VERSION • Stored: v$habitDbStoredVersion",
-                    icon = Icons.Rounded.Storage
-                ) {}
-            }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 56.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            )
+            ExpressiveItem(
+                title = "Settings DB",
+                subtitle = if (isLoadingVersions) "Loading..." else "Schema: v$SETTINGS_DB_VERSION • Stored: v$settingsDbStoredVersion",
+                icon = Icons.Rounded.SettingsSystemDaydream
+            ) {}
 
-            // Show both schema and stored version for settings
-            if (isLoadingVersions) {
-                ExpressiveItem(
-                    title = "Settings DB",
-                    subtitle = "Loading...",
-                    icon = Icons.Rounded.SettingsSystemDaydream
-                ) {}
-            } else {
-                ExpressiveItem(
-                    title = "Settings DB",
-                    subtitle = "Schema: v$SETTINGS_DB_VERSION • Stored: v$settingsDbStoredVersion",
-                    icon = Icons.Rounded.SettingsSystemDaydream
-                ) {}
-            }
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.surfaceVariant)
 
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 56.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
-            )
-
-            // Database update testing button
             ExpressiveItem(
                 title = "Database Update Testing",
                 subtitle = if (needsDatabaseUpdate == true) "Update required! Click to test"
                 else if (needsDatabaseUpdate == false) "No update needed. Click to force test"
                 else "Checking update status...",
                 icon = Icons.Rounded.SystemUpdate,
-                onClick = {
-                    showUpdateScreen = true
-                }
+                onClick = { showUpdateScreen = true }
             )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // HAPTIC ENGINE TESTER
-        Text(
-            "HAPTIC ENGINE TESTER",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Text("HAPTIC ENGINE TESTER", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 val tests = listOf(
                     "Click" to { HapticHelper.click(view, prefs) },
@@ -961,20 +882,9 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
                     "Success" to { HapticHelper.success(view, prefs) },
                     "Warning" to { HapticHelper.warning(view, prefs) }
                 )
-
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.height(180.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(140.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(tests) { (label, action) ->
-                        FilledTonalButton(
-                            onClick = action,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(label)
-                        }
+                        FilledTonalButton(onClick = action, shape = RoundedCornerShape(12.dp)) { Text(label, fontSize = 12.sp) }
                     }
                 }
             }
@@ -984,56 +894,21 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
         ExpressiveSection("Notification testing") {
             val scope = rememberCoroutineScope()
-
-            Button(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                onClick = {
-                    scope.launch {
-                        sendNotification(context, "Test", "Notification Test")
-                    }
-                }
-            ) {
+            Button(modifier = Modifier.padding(16.dp).fillMaxWidth(), onClick = { scope.launch { sendNotification(context, "Test", "Notification Test") } }) {
                 Text("Send Test Notification")
             }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            "RUNTIME STATS",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Text("RUNTIME STATS", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("PKG: ${context.packageName}", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
-
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 Text("TS: $now", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary)
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
-
-                Text(
-                    "UPTIME: ${SystemClock.elapsedRealtime() / 1000}s",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    color = SuccessGreen
-                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                Text("UPTIME: ${android.os.SystemClock.elapsedRealtime() / 1000}s", fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = SuccessGreen)
             }
         }
 
@@ -1041,13 +916,8 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
         Button(
             onClick = { showNukeSheet = true },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+            modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
             Icon(Icons.Rounded.DeleteForever, null)
