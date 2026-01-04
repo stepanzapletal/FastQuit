@@ -2,16 +2,14 @@ package com.stepan.fastquit
 
 import android.app.Application
 import android.content.Context
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import androidx.compose.ui.res.stringResource
 
+// Extension to convert DB Entity to UI Model
 fun HabitEntity.toUiModel(): HabitModel {
     return HabitModel(
         id = this.id,
@@ -27,6 +25,7 @@ fun HabitEntity.toUiModel(): HabitModel {
     )
 }
 
+// ================== MAIN VIEW MODEL ==================
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getDatabase(application).habitDao()
     private val _rawHabits = dao.getAllHabits().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -37,7 +36,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addHabit(name: String, icon: String, amount: Int, unit: String, startTime: Long) {
         viewModelScope.launch {
-            val totalSeconds: Long = calculateSeconds(amount, unit.toInt(), getApplication())
+            // Fix: Pass context to helper
+            val totalSeconds: Long = calculateSeconds(amount, unit, getApplication())
             val label = "$amount $unit"
             val nextIndex = (_rawHabits.value.maxOfOrNull { it.sortIndex } ?: -1) + 1
 
@@ -72,11 +72,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-// NEW: ViewModel for Settings Database
+// ================== SETTINGS VIEW MODEL ==================
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = SettingsDatabase.getDatabase(application).settingsDao()
 
-    // Expose prefs, default to a fresh object if DB is empty
     val preferences = dao.getPreferences()
         .map { it ?: UserPreferences() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, UserPreferences())
@@ -90,8 +89,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 }
 
-// In your ViewModels.kt, update the extendGoal and updateTarget functions:
-
+// ================== DETAIL VIEW MODEL ==================
 class DetailViewModel(application: Application, private val habitId: Int) : AndroidViewModel(application) {
     private val dao = AppDatabase.getDatabase(application).habitDao()
 
@@ -101,9 +99,26 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
     val history: StateFlow<List<ResetHistoryEntity>> = dao.getHistoryForHabit(habitId)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    // NEW: Goal changes flow
     val goalChanges: StateFlow<List<GoalChangeHistoryEntity>> = dao.getGoalChangesForHabit(habitId)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // --- Essential Functions for Detail Screen ---
+
+    fun deleteHabit() {
+        viewModelScope.launch {
+            val current = dao.getHabitById(habitId)
+            if (current != null) dao.delete(current)
+        }
+    }
+
+    fun updateDetails(newName: String, newIcon: String) {
+        viewModelScope.launch {
+            val current = dao.getHabitById(habitId)
+            current?.let {
+                dao.update(it.copy(name = newName, iconName = newIcon))
+            }
+        }
+    }
 
     fun resetTimer() {
         viewModelScope.launch {
@@ -128,11 +143,11 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
         viewModelScope.launch {
             val current = dao.getHabitById(habitId)
             current?.let { habit ->
-                val newTarget = calculateSeconds(amount, unit.toInt(), getApplication())
+                // Fix: Removed .toInt() causing crash, added context
+                val newTarget = calculateSeconds(amount, unit, getApplication())
                 val newLabel = "$amount $unit"
                 val newResetTime = if (resetTimer) System.currentTimeMillis() else habit.lastResetTime
 
-                // Record the goal change
                 dao.insertGoalChange(GoalChangeHistoryEntity(
                     habitId = habit.id,
                     changeDate = System.currentTimeMillis(),
@@ -158,11 +173,11 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
         viewModelScope.launch {
             val current = dao.getHabitById(habitId)
             current?.let { habit ->
-                val newTarget = calculateSeconds(amount, unit.toInt(), getApplication())
+                // Fix: Removed .toInt() causing crash, added context
+                val newTarget = calculateSeconds(amount, unit, getApplication())
                 val newLabel = "$amount $unit"
                 val newResetTime = if (resetTimer) System.currentTimeMillis() else habit.lastResetTime
 
-                // Record the goal change
                 dao.insertGoalChange(GoalChangeHistoryEntity(
                     habitId = habit.id,
                     changeDate = System.currentTimeMillis(),
@@ -185,21 +200,23 @@ class DetailViewModel(application: Application, private val habitId: Int) : Andr
     }
 }
 
-
 class DetailViewModelFactory(private val app: Application, private val id: Int) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T = DetailViewModel(app, id) as T
 }
 
-fun calculateSeconds(amount: Int, unit: Int, context: Context): Long {
-    val unitString = context.getString(unit)
-    return when (unitString) {
-        context.getString(R.string.c_seconds) -> amount.toLong()
-        context.getString(R.string.c_minutes) -> amount * 60L
-        context.getString(R.string.c_hours)   -> amount * 3600L
-        context.getString(R.string.c_days)    -> amount * 86400L
-        context.getString(R.string.c_weeks)   -> amount * 604800L
-        context.getString(R.string.c_months)  -> amount * 2592000L
-        context.getString(R.string.c_years)   -> amount * 31536000L
-        else -> amount * 86400L
+// ================== HELPER ==================
+
+// Updated to use Context for reliable String matching across languages
+fun calculateSeconds(amount: Int, unit: String, context: Context): Long {
+    val res = context.resources
+    return when(unit) {
+        res.getString(R.string.c_seconds) -> amount.toLong()
+        res.getString(R.string.c_minutes) -> amount * 60L
+        res.getString(R.string.c_hours)   -> amount * 3600L
+        res.getString(R.string.c_days)    -> amount * 86400L
+        res.getString(R.string.c_weeks)   -> amount * 604800L
+        res.getString(R.string.c_months)  -> amount * 2592000L
+        res.getString(R.string.c_years)   -> amount * 31536000L
+        else -> amount * 86400L // Default to Days
     }
 }

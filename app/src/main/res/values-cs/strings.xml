@@ -153,7 +153,7 @@
     <string name="c_light">Světlý</string>
     <string name="c_dark">Tmavý</string>
     <string name="settings">Nastavení</string>
-    <string name="preferences">Prefernece</string>
+    <string name="preferences">Základní Nastavení</string>
     <string name="data_sync"><![CDATA[Synchronizace Dat]]></string>
     <string name="lab">Experimenty</string>
     <string name="about">O Aplikaci</string>
@@ -245,7 +245,7 @@
     <string name="amperstand"><![CDATA[&]]></string>
     <string name="helper">Gemini</string>
     <string name="helper_role">Co-Pilot</string>
-    <string name="crafted_with_love"><![CDATA[Vyrobeno s <3]]></string>
+    <string name="crafted_with_love"><![CDATA[Vyrobeno s láskou <3]]></string>
     <string name="ai_debug">(AI byla využita pro ladění)</string>
     <string name="faq">F.A.Q.</string>
     <string name="questions">Otázky</string>
@@ -253,9 +253,11 @@
     <string name="a_1">Abych sám a ostatním pomohl se odtrhnout od svých zlozvyků v jednoduchém a bezpečném prostředí.</string>
     <string name="q_2">Jsou má data v bezpečí?</string>
     <string name="a_2">Ano! Všechno je 100% lokální, takže žádná tvá data nikdy tento telefon neopustí.</string>
-    <string name="q_3">Budoucí plány?</string>
-    <string name="a_3">Celkově aplikaci vylepšit a optimalizovat a přidat funkce, co mi uživatelé doporučí!</string>
-    <string name="copyright">Copyright (c) 2026 Insecurity</string>
+    <string name="q_3">Pro koho jsem tuto aplikaci vytvořil?</string>
+    <string name="a_3">Tuto aplikaci jsem vytvořil pro lidi, kteří se snaží zbavit zlozvyků, jako já… ať už jde o alkohol nebo sebepoškozování. Inspiroval jsem se aplikacemi na Google Play a chtěl jsem vytvořit jednoduchý a přehledný nástroj, která pomůže nejen mě, ale i mým kamarádům a ostatním, kteří mají podobný problém 🫶🏽.</string>
+    <string name="q_4">Budoucí plány?</string>
+    <string name="a_4">Celkově aplikaci vylepšit a optimalizovat a přidat funkce, co mi uživatelé doporučí!</string>
+    <string name="copyright">Copyright © 2026 Insecurity</string>
     <string name="mit_license_text">"\n                        Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\n                        The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\n                        THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n                    "</string>
     <string name="add">Přidat</string>
     <string name="new_habit">Nový Zlozvyk</string>
@@ -293,4 +295,5 @@
     <string name="begin_migration">ZAČÍT MIGRACI</string>
     <string name="enter_fastquit">OTEVŘÍT FASTQUIT</string>
     <string name="select_language">Zvol si jazyk</string>
+    <string name="version">Verze</string>
 </resources>

@@ -100,15 +100,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.ui.graphics.Brush
 
 // Helper enum for managing high-level app states
 private enum class AppLaunchState { LOADING, UPDATE, MAIN }
@@ -284,7 +288,23 @@ enum class SettingsPage { Main, Basic, Backup, Dev, About, Licenses, Haptics }
 @Composable
 fun SettingsScreen(navController: NavController, settingsViewModel: SettingsViewModel = viewModel()) {
     var currentPage by remember { mutableStateOf(SettingsPage.Main) }
-    BackHandler(enabled = currentPage != SettingsPage.Main) { currentPage = SettingsPage.Main }
+
+    // 1. Define smart back logic
+    val onBack = {
+        when (currentPage) {
+            SettingsPage.Main -> navController.popBackStack()
+            // If on Haptics, go back to Basic (Preferences)
+            SettingsPage.Haptics -> currentPage = SettingsPage.Basic
+            // All other sub-pages go back to Main
+            else -> currentPage = SettingsPage.Main
+        }
+    }
+
+    // 2. Hook into the System Back Button
+    BackHandler(enabled = currentPage != SettingsPage.Main) {
+        onBack()
+    }
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     Scaffold(
@@ -307,7 +327,8 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { if (currentPage == SettingsPage.Main) navController.popBackStack() else currentPage = SettingsPage.Main }) {
+                    // 3. Use the same back logic for the top-left arrow
+                    IconButton(onClick = { onBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 },
@@ -322,15 +343,23 @@ fun SettingsScreen(navController: NavController, settingsViewModel: SettingsView
                 transitionSpec = {
                     val duration = 400
                     val easing = FastOutSlowInEasing
-                    val isForward = when {
-                        initialState == SettingsPage.Main && targetState != SettingsPage.Main -> true
-                        targetState == SettingsPage.Main && initialState != SettingsPage.Main -> false
-                        else -> targetState.ordinal > initialState.ordinal
+
+                    // 4. improved animation hierarchy logic
+                    // Main(0) < Basic/Others(1) < Haptics(2)
+                    fun getDepth(page: SettingsPage): Int = when(page) {
+                        SettingsPage.Main -> 0
+                        SettingsPage.Haptics -> 2 // Deepest level
+                        else -> 1 // Basic, About, Dev, etc.
                     }
+
+                    val isForward = getDepth(targetState) > getDepth(initialState)
+
                     if (isForward) {
+                        // Forward: Enter from Right
                         slideInHorizontally(tween(duration, easing = easing)) { it } + fadeIn(tween(duration)) togetherWith
                                 slideOutHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeOut(tween(duration))
                     } else {
+                        // Backward: Enter from Left
                         slideInHorizontally(tween(duration, easing = easing)) { -it / 3 } + fadeIn(tween(duration)) togetherWith
                                 slideOutHorizontally(tween(duration, easing = easing)) { it } + fadeOut(tween(duration))
                     }
@@ -926,70 +955,168 @@ fun DevSettings(settingsViewModel: SettingsViewModel = viewModel()) {
 
 @Composable
 fun AboutSettings() {
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .verticalScroll(rememberScrollState())
-        .padding(16.dp)) {
-        // PROFILE HEADER
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(32.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-            Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    // USER (IMAGE SUPPORT)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val context = LocalContext.current
+    val appVersion = remember { getAppVersion(context) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        // ================== THE NEW EXPRESSIVE PROFILE CARD ==================
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(32.dp),
+            // Using a slightly higher surface container for distinction
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // 1. The decorative header banner (fills top space)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                )
+                            )
+                        )
+                )
+
+                // 2. The Content (Overlapping the banner)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 70.dp) // Push down so picture straddles banner edge
+                ) {
+                    // Profile Picture with thick surface border to pop against banner
+                    Surface(
+                        modifier = Modifier.size(120.dp),
+                        shape = CircleShape,
+                        border = BorderStroke(6.dp, MaterialTheme.colorScheme.surfaceContainerHigh),
+                        shadowElevation = 4.dp
+                    ) {
                         Image(
-                            painter = painterResource(id = R.drawable.profile), // Ensure R.drawable.profile exists
-                            contentDescription = stringResource(R.string.my_username),
-                            modifier = Modifier
-                                .size(70.dp)
-                                .clip(CircleShape)
-                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                            painter = painterResource(id = R.drawable.profile), // Ensure exists
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
                             contentScale = ContentScale.Crop
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(stringResource(R.string.my_username), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text(stringResource(R.string.my_role), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
 
-                    Spacer(modifier = Modifier.width(24.dp))
-                    Text(stringResource(R.string.amperstand), style = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.surfaceVariant))
-                    Spacer(modifier = Modifier.width(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // AI
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(70.dp)) {
-                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.onTertiary, modifier = Modifier.size(32.dp)) }
+                    // Name - Extra Bold and Large
+                    Text(
+                        text = stringResource(R.string.my_username),
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = (-0.5).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Role Chip
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Code,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.my_role),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(stringResource(R.string.helper), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        Text(stringResource(R.string.helper_role), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Info Row - Fills horizontal space and adds density
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                            // Subtle background for the info row area
+                            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(20.dp))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        AboutInfoItem(
+                            icon = Icons.Rounded.Info,
+                            label = stringResource(R.string.version),
+                            value = appVersion
+                        )
+                        // Optional: Add location or other neat info
+                        AboutInfoItem(
+                            icon = Icons.Rounded.LocationOn,
+                            label = "Made in",
+                            value = "Czechia"
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.crafted_with_love),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(stringResource(R.string.crafted_with_love), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.ai_debug), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+
+        // ================== FAQ SECTION ==================
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(
+                text = stringResource(R.string.faq),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                modifier = Modifier.padding(vertical = 16.dp, horizontal = 8.dp)
+            )
+
+            ExpressiveSection(stringResource(R.string.questions)) {
+                ExpandableItem(stringResource(R.string.q_1), stringResource(R.string.a_1))
+                HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+                ExpandableItem(stringResource(R.string.q_2), stringResource(R.string.a_2))
+                HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+                ExpandableItem(stringResource(R.string.q_3), stringResource(R.string.a_3))
+                HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
+                ExpandableItem(stringResource(R.string.q_4), stringResource(R.string.a_4))
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        Text(stringResource(R.string.faq), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
-        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
 
-        ExpressiveSection(stringResource(R.string.questions)) {
-            ExpandableItem(
-                stringResource(R.string.q_1),
-                stringResource(R.string.a_1)
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpandableItem(
-                stringResource(R.string.q_2),
-                stringResource(R.string.a_2)
-            )
-            HorizontalDivider(modifier = Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.surfaceVariant)
-            ExpandableItem(
-                stringResource(R.string.q_3),
-                stringResource(R.string.a_3)
-            )
-        }
+// Helper component for the info row items
+@Composable
+fun AboutInfoItem(icon: ImageVector, label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -1138,14 +1265,13 @@ fun ExpandableItem(title: String, body: String) {
 }
 
 // ===================== HOME SCREEN =====================
-
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = viewModel()) {
     val habitList by viewModel.habits.collectAsState()
 
-    // Initial State is loading dots
-    var quote by remember { mutableStateOf(ApiQuote("...", "...")) }
+    // Initialize with a random quote immediately
+    var quote by remember { mutableStateOf(LocalQuotes.getRandomQuote()) }
 
     var refreshCount by remember { mutableIntStateOf(0) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -1153,44 +1279,38 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
     var showBottomSheet by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    val currentLangCode = LanguageHelper.getCurrentCode()
-
+    // Timer for UI updates
     LaunchedEffect(Unit) {
-        while (true) { delay(1000); now = System.currentTimeMillis() }
+        while (true) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
     }
 
-    // UPDATED QUOTE FETCHING
+    // Refresh Logic - Now uses LocalQuotes
     LaunchedEffect(refreshCount) {
-        try {
-            // Fetch asynchronously on IO thread
-            quote = withContext(Dispatchers.IO) {
-                QuoteManager.getMotivationalQuote(currentLangCode)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        if (refreshCount > 0) { // Skip initial redundant load
+            isRefreshing = true
+            // Simulate a brief delay for the "feel" of a refresh, or remove delay for instant
+            delay(300)
+            quote = LocalQuotes.getRandomQuote()
+            isRefreshing = false
         }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Surface(
-                shape = RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                onClick = { refreshCount++ },
-                modifier = Modifier.fillMaxWidth().animateContentSize().zIndex(1f)
-            ) {
-                Column(modifier = Modifier.statusBarsPadding().padding(24.dp)) {
+            Surface(shape = RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), onClick = { refreshCount++ }, modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+                .zIndex(1f)) {
+                Column(modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(24.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
                         Column(modifier = Modifier.weight(1f)) {
-                            AnimatedContent(
-                                targetState = quote,
-                                transitionSpec = {
-                                    (fadeIn(animationSpec = tween(220, delayMillis = 90)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220, delayMillis = 90)))
-                                        .togetherWith(fadeOut(animationSpec = tween(90)))
-                                },
-                                label = "QuoteAnim"
-                            ) { targetQuote ->
+                            AnimatedContent(targetState = quote, transitionSpec = { (fadeIn(animationSpec = tween(220, delayMillis = 90)) + scaleIn(initialScale = 0.92f, animationSpec = tween(220, delayMillis = 90))).togetherWith(fadeOut(animationSpec = tween(90))) }, label = "QuoteAnim") { targetQuote ->
                                 Column {
                                     Text("\"${targetQuote.quote}\"", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -1199,10 +1319,8 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
                             }
                         }
                         Box(modifier = Modifier.offset(y = (-8).dp)) {
-                            FilledTonalIconButton(
-                                onClick = { navController.navigate("settings") },
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)
-                            ) {
+                            // SETTINGS BUTTON
+                            FilledTonalIconButton(onClick = { navController.navigate("settings") }, colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface)) {
                                 Icon(Icons.Rounded.Settings, stringResource(R.string.settings))
                             }
                         }
@@ -1211,29 +1329,16 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showBottomSheet = true },
-                icon = { Icon(Icons.Default.Add, stringResource(R.string.add)) },
-                text = { Text(stringResource(R.string.new_habit)) },
-                expanded = true
-            )
+            ExtendedFloatingActionButton(onClick = { showBottomSheet = true }, icon = { Icon(Icons.Default.Add, stringResource(R.string.add)) }, text = { Text(stringResource(R.string.new_habit)) }, expanded = true)
         }
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                isRefreshing = true
-                refreshCount++
-                Handler(Looper.getMainLooper()).postDelayed({ isRefreshing = false }, 1000)
-            },
-            state = pullState,
-            modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding()),
-            indicator = { PullToRefreshDefaults.LoadingIndicator(state = pullState, isRefreshing = isRefreshing, modifier = Modifier.align(Alignment.TopCenter)) }
-        ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        PullToRefreshBox(isRefreshing = isRefreshing, onRefresh = { isRefreshing = true; Handler(
+            Looper.getMainLooper()).postDelayed({ isRefreshing = false }, 1000) }, state = pullState, modifier = Modifier
+            .fillMaxSize()
+            .padding(top = innerPadding.calculateTopPadding()), indicator = { PullToRefreshDefaults.LoadingIndicator(state = pullState, isRefreshing = isRefreshing, modifier = Modifier.align(Alignment.TopCenter)) }) {
+            LazyColumn(modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item { Spacer(modifier = Modifier.height(16.dp)) }
                 items(items = habitList, key = { it.id }) { habit ->
                     val context = LocalContext.current
@@ -1242,104 +1347,23 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
                         checkAndNotifyAchievements(context, habit.name, habit.id, seconds, habit.completions, habit.targetSeconds)
                     }
                     Box(modifier = Modifier.animateItem()) {
-                        HabitCard(
-                            habit = habit,
-                            now = now,
-                            navController = navController,
-                            onDelete = { viewModel.deleteHabit(habit.id) },
-                            onMoveUp = { viewModel.moveHabit(habit.id, true) },
-                            onMoveDown = { viewModel.moveHabit(habit.id, false) }
-                        )
+                        HabitCard(habit = habit, now = now, navController = navController, onDelete = { viewModel.deleteHabit(habit.id) }, onMoveUp = { viewModel.moveHabit(habit.id, true) }, onMoveDown = { viewModel.moveHabit(habit.id, false) })
                     }
                 }
-                if (habitList.isEmpty()) {
-                    item {
-                        Text(
-                            stringResource(R.string.no_habbits_added),
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+                if (habitList.isEmpty()) { item { Text(stringResource(R.string.no_habbits_added), modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(32.dp), textAlign = TextAlign.Center) } }
                 item { Spacer(modifier = Modifier.height(100.dp)) }
             }
         }
     }
     if (showBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            NewHabitSheet(
-                onDismiss = { showBottomSheet = false },
-                onSave = { name, icon, amount, unit, start ->
-                    viewModel.addHabit(name, icon, amount, unit, start)
-                    showBottomSheet = false
-                }
-            )
+        ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow, dragHandle = { BottomSheetDefaults.DragHandle() }) {
+            NewHabitSheet(onDismiss = { showBottomSheet = false }, onSave = { name, icon, amount, unit, start -> viewModel.addHabit(name, icon, amount, unit, start); showBottomSheet = false })
         }
     }
 }
-object NetworkModule {
-    // 1. ZenQuotes for Content (English)
-    val quoteApi: QuoteApi = Retrofit.Builder()
-        .baseUrl("https://zenquotes.io/api/")
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(QuoteApi::class.java)
 
-    // 2. MyMemory for Translation
-    val translationApi: TranslationApi = Retrofit.Builder()
-        .baseUrl("https://api.mymemory.translated.net/")
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(TranslationApi::class.java)
-}
-object LocalQuotes {
-    val fallback = listOf(
-        ApiQuote("The only way out is through.", "Robert Frost"),
-        ApiQuote("He who has a why to live can bear almost any how.", "Friedrich Nietzsche"),
-        ApiQuote("Discipline is choosing between what you want now and what you want most.", "Abraham Lincoln"),
-        ApiQuote("We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Aristotle")
-    )
-    val czechFallback = listOf(
-        ApiQuote("Jediná cesta ven je skrz.", "Robert Frost"),
-        ApiQuote("Kdo má PROČ žít, snese téměř každé JAK.", "Friedrich Nietzsche"),
-        ApiQuote("Disciplína je volba mezi tím, co chceš teď, a tím, co chceš nejvíc.", "Abraham Lincoln"),
-        ApiQuote("Jsme tím, co opakovaně děláme. Dokonalost není čin, ale zvyk.", "Aristoteles")
-    )
-}
-
-object QuoteManager {
-    suspend fun getMotivationalQuote(langCode: String): AnimationState<Float, AnimationVector1D> {
-        // 1. Fetch English Quote
-        var quote = try {
-            val response = NetworkModule.quoteApi.getRandomQuotes()
-            if (response.isNotEmpty()) response[0] else LocalQuotes.fallback.random()
-        } catch (e: Exception) {
-            LocalQuotes.fallback.random()
-        }
-
-        // 2. If target is Czech, Attempt Translation
-        if (langCode == "cs") {
-            return try {
-                val translatedText = NetworkModule.translationApi.translate(
-                    text = quote.quote,
-                    langpair = "en|cs"
-                ).responseData.translatedText
-
-                // Return translated text with original author
-                quote.copy(quote = translatedText)
-            } catch (e: Exception) {
-                // Translation failed -> Use Local Czech Fallback to avoid showing English
-                LocalQuotes.czechFallback.random()
-            }
-        }
-        return quote
-    }
-}
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -1414,6 +1438,7 @@ fun HabitCard(
                             color = waveColor,
                             trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                             amplitude = { 1f },
+                            wavelength = 18.dp,
                             stroke = Stroke(
                                 width = with(density) { 8.dp.toPx() },
                                 cap = StrokeCap.Round
@@ -1640,21 +1665,40 @@ fun NewHabitSheet(onDismiss: () -> Unit, onSave: (String, String, Int, String, L
             .height(50.dp), shape = RoundedCornerShape(12.dp)) { Text(stringResource(R.string.commit)) }
     }
 }
+// Simple data class, no JSON annotations needed
+data class ApiQuote(val quote: String, val author: String)
 
-data class ApiQuote(
-    @SerializedName("q") val quote: String,
-    @SerializedName("a") val author: String
-)
+object LocalQuotes {
+    private val enQuotes = listOf(
+        ApiQuote("The only way out is through.", "Robert Frost"),
+        ApiQuote("He who has a why to live can bear almost any how.", "Friedrich Nietzsche"),
+        ApiQuote("Discipline is choosing between what you want now and what you want most.", "Abraham Lincoln"),
+        ApiQuote("We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "Aristotle"),
+        ApiQuote("The secret of getting ahead is getting started.", "Mark Twain"),
+        ApiQuote("Don't watch the clock; do what it does. Keep going.", "Sam Levenson"),
+        ApiQuote("It does not matter how slowly you go as long as you do not stop.", "Confucius"),
+        ApiQuote("Success is the sum of small efforts, repeated day in and day out.", "Robert Collier")
+    )
 
-data class TranslationResponse(val responseData: ResponseData)
-data class ResponseData(val translatedText: String)
+    private val csQuotes = listOf(
+        ApiQuote("Jediná cesta ven je skrz.", "Robert Frost"),
+        ApiQuote("Kdo má PROČ žít, snese téměř každé JAK.", "Friedrich Nietzsche"),
+        ApiQuote("Disciplína je volba mezi tím, co chceš teď, a tím, co chceš nejvíc.", "Abraham Lincoln"),
+        ApiQuote("Jsme tím, co opakovaně děláme. Dokonalost není čin, ale zvyk.", "Aristoteles"),
+        ApiQuote("Tajemství úspěchu je začít.", "Mark Twain"),
+        ApiQuote("Nesleduj hodiny; dělej to, co dělají ony. Nezastavuj.", "Sam Levenson"),
+        ApiQuote("Nezáleží na tom, jak pomalu jdeš, dokud se nezastavíš.", "Konfucius"),
+        ApiQuote("Úspěch je součtem malých snah opakovaných den co den.", "Robert Collier")
+    )
 
-interface QuoteApi {
-    @GET("random") // ZenQuotes: https://zenquotes.io/api/random
-    suspend fun getRandomQuotes(): List<ApiQuote>
-}
+    fun getRandomQuote(): ApiQuote {
+        // Use the existing LanguageHelper to determine context
+        val currentCode = LanguageHelper.getCurrentCode()
 
-interface TranslationApi {
-    @GET("get") // MyMemory: https://api.mymemory.translated.net/get?q=...&langpair=en|cs
-    suspend fun translate(@Query("q") text: String, @Query("langpair") langpair: String): TranslationResponse
+        // If explicitly Czech, or System default is Czech
+        val isCzech = currentCode == "cs" || (currentCode.isEmpty() && java.util.Locale.getDefault().language == "cs")
+
+        val list = if (isCzech) csQuotes else enQuotes
+        return list.random()
+    }
 }

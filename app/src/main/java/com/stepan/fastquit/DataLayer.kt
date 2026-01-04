@@ -266,11 +266,11 @@ object IconMapper {
         mapOf(
             s(R.string.energy) to Icons.Rounded.Bolt,
             s(R.string.gaming) to Icons.Rounded.VideogameAsset,
+            s(R.string.self_harm) to Icons.Rounded.ContentCut,
             s(R.string.gym) to Icons.Rounded.FitnessCenter,
             s(R.string.code) to Icons.Rounded.Code,
             s(R.string.smoking) to Icons.Rounded.SmokingRooms,
             s(R.string.alcohol) to Icons.Rounded.LocalDrink,
-            s(R.string.self_harm) to Icons.Rounded.ContentCut,
             s(R.string.spending) to Icons.Rounded.AttachMoney,
             s(R.string.sleep) to Icons.Rounded.Bedtime,
             s(R.string.reading) to Icons.Rounded.MenuBook,
@@ -317,10 +317,10 @@ object IconMapper {
         listOf(
             s(R.string.energy),
             s(R.string.gaming),
+            s(R.string.self_harm),
             s(R.string.gym),
             s(R.string.smoking),
             s(R.string.alcohol),
-            s(R.string.self_harm),
             s(R.string.code),
             s(R.string.sleep)
         )
