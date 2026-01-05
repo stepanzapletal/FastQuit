@@ -117,6 +117,7 @@ import com.google.gson.annotations.SerializedName
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
+import androidx.compose.runtime.getValue
 
 // Helper enum for managing high-level app states
 private enum class AppLaunchState { LOADING, UPDATE, MAIN }
@@ -1379,7 +1380,7 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
 
     // Initialize with a random quote immediately
     var quote by remember { mutableStateOf(LocalQuotes.getRandomQuote()) }
-
+    val prefs by viewModel.prefs.collectAsState()
     var refreshCount by remember { mutableIntStateOf(0) }
     var isRefreshing by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
@@ -1481,36 +1482,38 @@ fun FastQuitHomeScreen(navController: NavController, viewModel: MainViewModel = 
             NewHabitSheet(onDismiss = { showBottomSheet = false }, onSave = { name, icon, amount, unit, start -> viewModel.addHabit(name, icon, amount, unit, start); showBottomSheet = false })
         }
     }
-    if (showUpdateDialog && updateAvailable != null) {
-        val release = updateAvailable!!
-        AlertDialog(
-            onDismissRequest = { showUpdateDialog = false },
-            icon = { Icon(Icons.Rounded.SystemUpdate, null) },
-            title = { Text(stringResource(R.string.update_available_title)) }, // Add to strings.xml or use literal "Update Available"
-            text = {
-                Column {
-                    Text("New Version: ${release.tagName}", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (release.body.length > 300) release.body.take(300) + "..." else release.body,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+    if (prefs.autoUpdateEnabled) {
+        if (showUpdateDialog && updateAvailable != null) {
+            val release = updateAvailable!!
+            AlertDialog(
+                onDismissRequest = { showUpdateDialog = false },
+                icon = { Icon(Icons.Rounded.SystemUpdate, null) },
+                title = { Text(stringResource(R.string.update_available_title)) }, // Add to strings.xml or use literal "Update Available"
+                text = {
+                    Column {
+                        Text("New Version: ${release.tagName}", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (release.body.length > 300) release.body.take(300) + "..." else release.body,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        UpdateManager.openReleasePage(context, release.htmlUrl)
+                        showUpdateDialog = false
+                    }) {
+                        Text("Download")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUpdateDialog = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
                 }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    UpdateManager.openReleasePage(context, release.htmlUrl)
-                    showUpdateDialog = false
-                }) {
-                    Text("Download")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUpdateDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
+            )
+        }
     }
 }
 

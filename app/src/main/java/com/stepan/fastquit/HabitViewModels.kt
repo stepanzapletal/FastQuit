@@ -27,16 +27,25 @@ fun HabitEntity.toUiModel(): HabitModel {
 
 // ================== MAIN VIEW MODEL ==================
 class MainViewModel(application: Application) : AndroidViewModel(application) {
+    // 1. Existing Habit DAO
     private val dao = AppDatabase.getDatabase(application).habitDao()
+
+    // 2. NEW: Add Settings DAO to access preferences
+    private val settingsDao = SettingsDatabase.getDatabase(application).settingsDao()
+
     private val _rawHabits = dao.getAllHabits().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val habits: StateFlow<List<HabitModel>> = _rawHabits
         .map { list -> list.map { it.toUiModel() } }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    // 3. NEW: Expose 'prefs' so the Home Screen can read 'autoUpdateEnabled'
+    val prefs = settingsDao.getPreferences()
+        .map { it ?: UserPreferences() }
+        .stateIn(viewModelScope, SharingStarted.Lazily, UserPreferences())
+
     fun addHabit(name: String, icon: String, amount: Int, unit: String, startTime: Long) {
         viewModelScope.launch {
-            // Fix: Pass context to helper
             val totalSeconds: Long = calculateSeconds(amount, unit, getApplication())
             val label = "$amount $unit"
             val nextIndex = (_rawHabits.value.maxOfOrNull { it.sortIndex } ?: -1) + 1

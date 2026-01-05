@@ -70,10 +70,10 @@
     <string name="continue_str">Pokračovat</string>
     <string name="_7_days">7 Dnů</string>
     <string name="progress">Pokrok</string>
-    <string name="seconds">SECONDS</string>
-    <string name="minutes">MINUTES</string>
-    <string name="hours">HOURS</string>
-    <string name="days">DAYS</string>
+    <string name="seconds">SEKUNDY</string>
+    <string name="minutes">MINUTY</string>
+    <string name="hours">HODINY</string>
+    <string name="days">DNY</string>
     <string name="habit">Zlozvyk</string>
     <string name="target_reached">Cíl Dosažen</string>
     <string name="milestone_next">Vyber si svůj další cíl a pokračuj v cestě.</string>
